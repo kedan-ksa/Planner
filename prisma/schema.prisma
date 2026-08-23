@@ -1,0 +1,465 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  EXECUTIVE
+  DEPARTMENT_MANAGER
+  DEPARTMENT_MEMBER
+  VIEWER
+}
+
+enum WorkStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  ON_TRACK
+  NEEDS_ATTENTION
+  OVERDUE
+  BLOCKED
+  COMPLETED
+  PAUSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum KpiType {
+  NUMBER
+  PERCENTAGE
+  CURRENCY
+  COUNT
+  BOOLEAN
+  CUSTOM
+}
+
+enum KpiDirection {
+  HIGHER_IS_BETTER
+  LOWER_IS_BETTER
+  EXACT_TARGET
+}
+
+enum Frequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+  CUSTOM
+}
+
+enum ReportType {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+  CUSTOM
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum ReportStatus {
+  DRAFT
+  IN_PROGRESS
+  READY_FOR_REVIEW
+  SUBMITTED
+  RETURNED
+  APPROVED
+  ARCHIVED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RETURNED
+}
+
+model Organization {
+  id           String          @id @default(cuid())
+  name         String
+  code         String          @unique
+  primaryColor String          @default("#0f6f66")
+  departments  Department[]
+  users        User[]
+  axes         StrategicAxis[]
+}
+
+model Department {
+  id             String               @id @default(cuid())
+  organizationId String
+  name           String
+  code           String
+  parentId       String?
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         Department?          @relation("DepartmentTree", fields: [parentId], references: [id])
+  children       Department[]         @relation("DepartmentTree")
+  users          User[]
+  objectives     StrategicObjective[]
+  initiatives    Initiative[]
+  kpis           KPI[]
+
+  @@unique([organizationId, code])
+}
+
+model User {
+  id             String         @id @default(cuid())
+  organizationId String?
+  departmentId   String?
+  name           String
+  email          String         @unique
+  emailVerified  DateTime?
+  image          String?
+  passwordHash   String?
+  role           Role           @default(DEPARTMENT_MEMBER)
+  active         Boolean        @default(true)
+  organization   Organization?  @relation(fields: [organizationId], references: [id])
+  department     Department?    @relation(fields: [departmentId], references: [id])
+  accounts       Account[]
+  sessions       Session[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @id
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model StrategicAxis {
+  id             String               @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?
+  weight         Decimal              @db.Decimal(5, 2)
+  startDate      DateTime
+  endDate        DateTime
+  status         WorkStatus           @default(NOT_STARTED)
+  progress       Decimal              @default(0) @db.Decimal(5, 2)
+  organization   Organization         @relation(fields: [organizationId], references: [id])
+  objectives     StrategicObjective[]
+  initiatives    Initiative[]
+  kpis           KPI[]
+}
+
+model StrategicObjective {
+  id           String        @id @default(cuid())
+  axisId       String
+  departmentId String?
+  title        String
+  weight       Decimal       @db.Decimal(5, 2)
+  startDate    DateTime
+  endDate      DateTime
+  target       Decimal?      @db.Decimal(14, 2)
+  progress     Decimal       @default(0) @db.Decimal(5, 2)
+  status       WorkStatus    @default(NOT_STARTED)
+  axis         StrategicAxis @relation(fields: [axisId], references: [id], onDelete: Cascade)
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  initiatives  Initiative[]
+  kpis         KPI[]
+}
+
+model Initiative {
+  id           String               @id @default(cuid())
+  axisId       String
+  objectiveId  String
+  departmentId String
+  title        String
+  description  String?
+  startDate    DateTime
+  dueDate      DateTime
+  weight       Decimal              @db.Decimal(5, 2)
+  priority     Priority             @default(MEDIUM)
+  status       WorkStatus           @default(NOT_STARTED)
+  progress     Decimal              @default(0) @db.Decimal(5, 2)
+  axis         StrategicAxis        @relation(fields: [axisId], references: [id])
+  objective    StrategicObjective   @relation(fields: [objectiveId], references: [id])
+  department   Department           @relation(fields: [departmentId], references: [id])
+  tasks        Task[]
+  kpis         KPI[]
+  planMappings PlannerPlanMapping[]
+  updates      ProgressUpdate[]
+  risks        Risk[]
+}
+
+model Task {
+  id              String     @id @default(cuid())
+  initiativeId    String
+  title           String
+  dueDate         DateTime?
+  percentComplete Int        @default(0)
+  status          WorkStatus @default(NOT_STARTED)
+  externalId      String?    @unique
+  initiative      Initiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+}
+
+model KPI {
+  id           String              @id @default(cuid())
+  name         String
+  axisId       String?
+  objectiveId  String?
+  initiativeId String?
+  departmentId String
+  type         KpiType
+  direction    KpiDirection
+  baseline     Decimal?            @db.Decimal(18, 4)
+  target       Decimal             @db.Decimal(18, 4)
+  currentValue Decimal?            @db.Decimal(18, 4)
+  unit         String?
+  weight       Decimal             @default(1) @db.Decimal(5, 2)
+  frequency    Frequency
+  dataSource   String?
+  axis         StrategicAxis?      @relation(fields: [axisId], references: [id])
+  objective    StrategicObjective? @relation(fields: [objectiveId], references: [id])
+  initiative   Initiative?         @relation(fields: [initiativeId], references: [id])
+  department   Department          @relation(fields: [departmentId], references: [id])
+  values       KPIValueHistory[]
+}
+
+model KPIValueHistory {
+  id          String   @id @default(cuid())
+  kpiId       String
+  periodId    String?
+  value       Decimal  @db.Decimal(18, 4)
+  achievement Decimal  @db.Decimal(7, 2)
+  recordedAt  DateTime @default(now())
+  kpi         KPI      @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+}
+
+model ReportingPeriod {
+  id        String           @id @default(cuid())
+  name      String
+  year      Int
+  type      ReportType
+  startDate DateTime
+  endDate   DateTime
+  dueDate   DateTime
+  reports   Report[]
+  updates   ProgressUpdate[]
+}
+
+model ProgressUpdate {
+  id                String          @id @default(cuid())
+  periodId          String
+  initiativeId      String
+  previousProgress  Decimal         @db.Decimal(5, 2)
+  currentProgress   Decimal         @db.Decimal(5, 2)
+  achievements      String
+  challenges        String?
+  correctiveActions String?
+  nextSteps         String
+  supportNeeded     String?
+  version           Int             @default(1)
+  updatedById       String
+  updatedAt         DateTime        @updatedAt
+  period            ReportingPeriod @relation(fields: [periodId], references: [id])
+  initiative        Initiative      @relation(fields: [initiativeId], references: [id])
+
+  @@unique([periodId, initiativeId, version])
+}
+
+model Report {
+  id              String          @id @default(cuid())
+  periodId        String
+  departmentId    String?
+  title           String
+  type            ReportType
+  status          ReportStatus    @default(DRAFT)
+  completion      Int             @default(0)
+  summary         String?
+  achievements    String?
+  challenges      String?
+  recommendations String?
+  nextSteps       String?
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  period          ReportingPeriod @relation(fields: [periodId], references: [id])
+  approvals       Approval[]
+}
+
+model Approval {
+  id            String         @id @default(cuid())
+  reportId      String?
+  entityType    String
+  entityId      String
+  status        ApprovalStatus @default(PENDING)
+  requestedById String
+  approverId    String?
+  comment       String?
+  createdAt     DateTime       @default(now())
+  decidedAt     DateTime?
+  report        Report?        @relation(fields: [reportId], references: [id])
+}
+
+model Risk {
+  id             String      @id @default(cuid())
+  initiativeId   String?
+  departmentId   String
+  title          String
+  description    String
+  probability    Int
+  impact         Int
+  riskScore      Int
+  mitigationPlan String
+  ownerId        String?
+  dueDate        DateTime?
+  status         WorkStatus  @default(ON_TRACK)
+  initiative     Initiative? @relation(fields: [initiativeId], references: [id])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String
+  category   String
+  title      String
+  body       String
+  important  Boolean   @default(false)
+  readAt     DateTime?
+  entityType String?
+  entityId   String?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model ReminderRule {
+  id         String  @id @default(cuid())
+  name       String
+  eventType  String
+  daysOffset Int
+  channel    String
+  enabled    Boolean @default(true)
+  config     Json?
+}
+
+model PlannerConnection {
+  id                    String               @id @default(cuid())
+  organizationId        String
+  tenantId              String
+  microsoftUserId       String
+  encryptedAccessToken  String?
+  encryptedRefreshToken String?
+  expiresAt             DateTime?
+  syncSchedule          String               @default("EVERY_6_HOURS")
+  lastSyncAt            DateTime?
+  plans                 PlannerPlanMapping[]
+  jobs                  SyncJob[]
+
+  @@unique([organizationId, microsoftUserId])
+}
+
+model PlannerPlanMapping {
+  id             String               @id @default(cuid())
+  connectionId   String
+  externalPlanId String
+  planTitle      String
+  initiativeId   String?
+  connection     PlannerConnection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  initiative     Initiative?          @relation(fields: [initiativeId], references: [id])
+  tasks          PlannerTaskMapping[]
+
+  @@unique([connectionId, externalPlanId])
+}
+
+model PlannerTaskMapping {
+  id             String             @id @default(cuid())
+  planMappingId  String
+  externalTaskId String
+  taskId         String?
+  etag           String?
+  lastSyncedAt   DateTime?
+  planMapping    PlannerPlanMapping @relation(fields: [planMappingId], references: [id], onDelete: Cascade)
+
+  @@unique([planMappingId, externalTaskId])
+}
+
+model ExternalEntity {
+  id         String   @id @default(cuid())
+  provider   String
+  entityType String
+  externalId String
+  payload    Json
+  lastSeenAt DateTime @default(now())
+
+  @@unique([provider, entityType, externalId])
+}
+
+model SyncJob {
+  id           String            @id @default(cuid())
+  connectionId String
+  status       SyncStatus        @default(PENDING)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  connection   PlannerConnection @relation(fields: [connectionId], references: [id])
+  logs         SyncLog[]
+}
+
+model SyncLog {
+  id        String   @id @default(cuid())
+  jobId     String
+  level     String
+  message   String
+  createdAt DateTime @default(now())
+  job       SyncJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id])
+}
+
