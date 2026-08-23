@@ -1,0 +1,3 @@
+const GRAPH="https://graph.microsoft.com/v1.0";
+export class MicrosoftGraphClient{constructor(private readonly accessToken:string){} async request<T>(path:string,init:RequestInit={}){const response=await fetch(`${GRAPH}${path}`,{...init,headers:{Authorization:`Bearer ${this.accessToken}`,"Content-Type":"application/json",...init.headers},cache:"no-store"});if(!response.ok)throw new Error(`GRAPH_${response.status}`);return response.json() as Promise<T>;}}
+
