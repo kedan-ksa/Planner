@@ -1,0 +1,15 @@
+node_modules
+.npm-cache
+.next
+.env
+.env.local
+coverage
+playwright-report
+test-results
+*.log
+*.tsbuildinfo
+dist
+.open-next
+.wrangler
+cloudflare-env.d.ts
+.DS_Store

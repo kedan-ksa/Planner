@@ -1,0 +1,4 @@
+export type WeightedItem={progress:number;weight:number};
+export function weightedProgress(items:WeightedItem[]){const total=items.reduce((s,i)=>s+i.weight,0);if(total<=0)return 0;return Math.round((items.reduce((s,i)=>s+i.progress*i.weight,0)/total)*100)/100;}
+export function kpiAchievement(current:number,target:number,baseline:number,direction:"HIGHER_IS_BETTER"|"LOWER_IS_BETTER"|"EXACT_TARGET"){if(direction==="LOWER_IS_BETTER")return current<=target?100:Math.max(0,(target/current)*100);if(direction==="EXACT_TARGET")return Math.max(0,100-(Math.abs(current-target)/Math.max(Math.abs(target),1))*100);const span=target-baseline;return span===0?(current>=target?100:0):Math.max(0,((current-baseline)/span)*100);}
+export function ragStatus(value:number,green=90,amber=70){return value>=green?"GREEN":value>=amber?"AMBER":"RED";}

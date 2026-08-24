@@ -1,0 +1,2 @@
+import {describe,it,expect} from 'vitest';import {weightedProgress,kpiAchievement,ragStatus} from '../lib/progress';
+describe('calculation engine',()=>{it('calculates weighted progress',()=>expect(weightedProgress([{progress:80,weight:60},{progress:50,weight:40}])).toBe(68));it('calculates higher-is-better KPI',()=>expect(kpiAchievement(75,100,50,'HIGHER_IS_BETTER')).toBe(50));it('applies RAG thresholds',()=>{expect(ragStatus(92)).toBe('GREEN');expect(ragStatus(75)).toBe('AMBER');expect(ragStatus(50)).toBe('RED')})});
