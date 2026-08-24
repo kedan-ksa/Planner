@@ -1,15 +1,17 @@
 import type { NextAuthConfig } from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
+import { readEnv } from "@/lib/env";
 
 export default {
   trustHost: true,
+  secret: readEnv("AUTH_SECRET"),
   providers: [
     MicrosoftEntraID({
-      clientId: process.env.AZURE_AD_CLIENT_ID ?? "",
-      clientSecret: process.env.AZURE_AD_CLIENT_SECRET ?? "",
-      issuer: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID ?? "common"}/v2.0`,
+      clientId: readEnv("AZURE_AD_CLIENT_ID") ?? "",
+      clientSecret: readEnv("AZURE_AD_CLIENT_SECRET") ?? "",
+      issuer: `https://login.microsoftonline.com/${readEnv("AZURE_AD_TENANT_ID") ?? "common"}/v2.0`,
       authorization: {
-        params: { scope: process.env.MICROSOFT_GRAPH_SCOPE },
+        params: { scope: readEnv("MICROSOFT_GRAPH_SCOPE") },
       },
     }),
   ],
