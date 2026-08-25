@@ -28,8 +28,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          # Next.js imports the Prisma/Auth modules while collecting routes.
+          # These build-only fallbacks are never written to the Worker; Wrangler
+          # preserves the production secrets already attached to the deployment.
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://build:build@127.0.0.1:5432/build' }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'build-only-auth-secret-not-for-runtime' }}
           AUTH_URL: https://portal.kedan.com.sa
           APP_URL: https://portal.kedan.com.sa
           AZURE_AD_CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID }}
