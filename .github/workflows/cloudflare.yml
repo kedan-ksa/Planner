@@ -24,7 +24,9 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: npm run deploy:cloudflare
+      # Safety rollback: keep production on the last verified database-connected
+      # Worker version until the database secret is added to GitHub Actions.
+      - run: npx wrangler versions deploy d6533f44-0fd1-4f35-a802-8bf9744567bc@100% --yes
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
