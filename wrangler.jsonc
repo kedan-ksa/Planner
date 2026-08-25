@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "kedan-strategic-performance",
+  "name": "planner",
   "account_id": "d2a4fd9ca1c88b2f1a20db48282ddefd",
   "keep_vars": true,
   "main": ".open-next/worker.js",
