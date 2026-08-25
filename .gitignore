@@ -13,3 +13,6 @@ dist
 .wrangler
 cloudflare-env.d.ts
 .DS_Store
+.tmp/
+input/
+data/plan-2026-source.json
