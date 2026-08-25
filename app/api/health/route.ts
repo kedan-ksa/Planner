@@ -12,6 +12,10 @@ export async function GET() {
     const category =
       error instanceof Error ? error.constructor.name : "UnknownError";
     const message = error instanceof Error ? error.message.toLowerCase() : "";
+    const prismaCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : undefined;
     const reason = message.includes("database_url")
       ? "MISSING_DATABASE_URL"
       : message.includes("fetch failed")
@@ -26,7 +30,13 @@ export async function GET() {
                 ? "PRISMA_ADAPTER_ERROR"
                 : "UNKNOWN_DATABASE_ERROR";
     return NextResponse.json(
-      { status: "error", database: "unavailable", category, reason },
+      {
+        status: "error",
+        database: "unavailable",
+        category,
+        reason,
+        ...(prismaCode ? { prismaCode } : {}),
+      },
       { status: 503 },
     );
   }
