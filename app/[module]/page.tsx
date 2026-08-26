@@ -14,8 +14,23 @@ async function loadRows(module: string): Promise<string[][]> {
       return (await db.strategicObjective.findMany({ include: { axis: true, department: true }, orderBy: { title: "asc" } })).map((item) => [item.title, item.axis.title, item.department?.name ?? "غير محدد", `${Number(item.progress)}%`, item.status]);
     case "kpis":
       return (await db.kPI.findMany({ orderBy: { name: "asc" } })).map((item) => [item.name, `${Number(item.target)}${item.unit ?? ""}`, item.currentValue === null ? "لم يُحدّث" : `${Number(item.currentValue)}${item.unit ?? ""}`, item.currentValue === null || Number(item.target) === 0 ? "—" : `${Math.round((Number(item.currentValue) / Number(item.target)) * 100)}%`, item.currentValue === null ? "بانتظار التحديث" : "محدّث"]);
-    case "departments":
-      return (await db.department.findMany({ include: { _count: { select: { initiatives: true } } }, orderBy: { name: "asc" } })).map((item) => [item.name, item.code, "—", String(item._count.initiatives), "—"]);
+    case "departments": {
+      // Keep this as two simple queries. Prisma's nested relation-count query
+      // can leave the node-postgres driver waiting indefinitely in a Worker,
+      // even when the same database is reached through Hyperdrive.
+      const departments = await db.department.findMany({ orderBy: { name: "asc" } });
+      const initiatives = await db.initiative.findMany({ select: { departmentId: true } });
+      const initiativeCounts = new Map<string, number>();
+
+      for (const initiative of initiatives) {
+        initiativeCounts.set(
+          initiative.departmentId,
+          (initiativeCounts.get(initiative.departmentId) ?? 0) + 1,
+        );
+      }
+
+      return departments.map((item) => [item.name, item.code, "—", String(initiativeCounts.get(item.id) ?? 0), "—"]);
+    }
     case "initiatives":
       return (await db.initiative.findMany({ include: { department: true }, orderBy: { title: "asc" } })).map((item) => [item.title, item.department.name, item.dueDate.toLocaleDateString("ar-SA"), `${Number(item.progress)}%`, item.status]);
     default:
