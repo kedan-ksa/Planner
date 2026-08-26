@@ -24,22 +24,12 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      # Safety rollback: keep production on the last verified database-connected
-      # Worker version until the database secret is added to GitHub Actions.
-      - name: Restore verified Worker deployment
-        run: |
-          curl --fail-with-body --request POST \
-            "https://api.cloudflare.com/client/v4/accounts/d2a4fd9ca1c88b2f1a20db48282ddefd/workers/scripts/planner/deployments" \
-            --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            --header "Content-Type: application/json" \
-            --data '{"strategy":"percentage","versions":[{"version_id":"d6533f44-0fd1-4f35-a802-8bf9744567bc","percentage":100}]}'
+      - name: Build and deploy Worker
+        run: npm run deploy:cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Next.js imports the Prisma/Auth modules while collecting routes.
-          # These build-only fallbacks are never written to the Worker; Wrangler
-          # preserves the production secrets already attached to the deployment.
-          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://build:build@127.0.0.1:5432/build' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'build-only-auth-secret-not-for-runtime' }}
           AUTH_URL: https://portal.kedan.com.sa
           APP_URL: https://portal.kedan.com.sa
