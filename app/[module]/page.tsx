@@ -10,8 +10,21 @@ async function loadRows(module: string): Promise<string[][]> {
   switch (module) {
     case "axes":
       return (await db.strategicAxis.findMany({ orderBy: { title: "asc" } })).map((item) => [item.title, "—", String(item.startDate.getUTCFullYear()), `${Number(item.weight)}%`, `${Number(item.progress)}%`]);
-    case "objectives":
-      return (await db.strategicObjective.findMany({ include: { axis: true, department: true }, orderBy: { title: "asc" } })).map((item) => [item.title, item.axis.title, item.department?.name ?? "غير محدد", `${Number(item.progress)}%`, item.status]);
+    case "objectives": {
+      const objectives = await db.strategicObjective.findMany({ orderBy: { title: "asc" } });
+      const axes = await db.strategicAxis.findMany({ select: { id: true, title: true } });
+      const departments = await db.department.findMany({ select: { id: true, name: true } });
+      const axisNames = new Map(axes.map((axis) => [axis.id, axis.title]));
+      const departmentNames = new Map(departments.map((department) => [department.id, department.name]));
+
+      return objectives.map((item) => [
+        item.title,
+        axisNames.get(item.axisId) ?? "غير محدد",
+        item.departmentId ? departmentNames.get(item.departmentId) ?? "غير محدد" : "غير محدد",
+        `${Number(item.progress)}%`,
+        item.status,
+      ]);
+    }
     case "kpis":
       return (await db.kPI.findMany({ orderBy: { name: "asc" } })).map((item) => [item.name, `${Number(item.target)}${item.unit ?? ""}`, item.currentValue === null ? "لم يُحدّث" : `${Number(item.currentValue)}${item.unit ?? ""}`, item.currentValue === null || Number(item.target) === 0 ? "—" : `${Math.round((Number(item.currentValue) / Number(item.target)) * 100)}%`, item.currentValue === null ? "بانتظار التحديث" : "محدّث"]);
     case "departments": {
@@ -31,8 +44,19 @@ async function loadRows(module: string): Promise<string[][]> {
 
       return departments.map((item) => [item.name, item.code, "—", String(initiativeCounts.get(item.id) ?? 0), "—"]);
     }
-    case "initiatives":
-      return (await db.initiative.findMany({ include: { department: true }, orderBy: { title: "asc" } })).map((item) => [item.title, item.department.name, item.dueDate.toLocaleDateString("ar-SA"), `${Number(item.progress)}%`, item.status]);
+    case "initiatives": {
+      const initiatives = await db.initiative.findMany({ orderBy: { title: "asc" } });
+      const departments = await db.department.findMany({ select: { id: true, name: true } });
+      const departmentNames = new Map(departments.map((department) => [department.id, department.name]));
+
+      return initiatives.map((item) => [
+        item.title,
+        departmentNames.get(item.departmentId) ?? "غير محدد",
+        item.dueDate.toLocaleDateString("ar-SA"),
+        `${Number(item.progress)}%`,
+        item.status,
+      ]);
+    }
     default:
       return [];
   }
