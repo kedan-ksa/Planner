@@ -45,7 +45,16 @@ async function loadRows(module: string): Promise<string[][]> {
       return departments.map((item) => [item.name, item.code, "—", String(initiativeCounts.get(item.id) ?? 0), "—"]);
     }
     case "initiatives": {
-      const initiatives = await db.initiative.findMany({ orderBy: { title: "asc" } });
+      const initiatives = await db.initiative.findMany({
+        orderBy: { title: "asc" },
+        select: {
+          title: true,
+          departmentId: true,
+          dueDate: true,
+          progress: true,
+          status: true,
+        },
+      });
       const departments = await db.department.findMany({ select: { id: true, name: true } });
       const departmentNames = new Map(departments.map((department) => [department.id, department.name]));
 
