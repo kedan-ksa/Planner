@@ -10,6 +10,12 @@
     "AUTH_URL": "https://planner.ahmad-2a4.workers.dev",
     "APP_URL": "https://planner.ahmad-2a4.workers.dev"
   },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "b5e12ddbf491414e849059796ccdd141"
+    }
+  ],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "observability": { "enabled": true }
 }
