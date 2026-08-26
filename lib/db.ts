@@ -19,17 +19,17 @@ function resolveConnectionString() {
       .HYPERDRIVE;
 
     if (hyperdrive?.connectionString) {
-      return hyperdrive.connectionString;
+      return { connectionString: hyperdrive.connectionString, usesHyperdrive: true };
     }
   } catch {
     // Build, tests and the regular Next.js dev server do not have a Cloudflare
     // request context, so they intentionally use DATABASE_URL instead.
   }
 
-  return readEnv("DATABASE_URL");
+  return { connectionString: readEnv("DATABASE_URL"), usesHyperdrive: false };
 }
 
-const connectionString = resolveConnectionString();
+const { connectionString, usesHyperdrive } = resolveConnectionString();
 
 if (!connectionString) {
   throw new Error("DATABASE_URL is required");
@@ -42,7 +42,10 @@ const adapter = new PrismaPg({
   // A Worker isolate must not open a large node-postgres pool. Next.js can
   // otherwise prefetch several routes concurrently and exhaust the small
   // production database before any response is rendered.
-  max: 1,
+  // Hyperdrive multiplexes these connections safely. More than one is needed
+  // because Next.js can render multiple authenticated requests concurrently;
+  // a single shared pool slot makes queued Worker requests look hung.
+  max: usesHyperdrive ? 5 : 1,
   connectionTimeoutMillis: 10_000,
   idleTimeoutMillis: 5_000,
 });
