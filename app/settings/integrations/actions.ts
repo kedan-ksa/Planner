@@ -3,22 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { requireAction } from "@/lib/authz";
+import { requireAction, requireUser } from "@/lib/authz";
 import { readEnv } from "@/lib/env";
-import { getMicrosoftAccessToken } from "@/services/microsoft-graph/token";
+import { getMicrosoftAccessToken, getMicrosoftAccessTokenByProviderAccountId } from "@/services/microsoft-graph/token";
 import { MicrosoftGraphClient } from "@/services/microsoft-graph/client";
 import { PlannerService } from "@/services/planner/service";
 import { syncPlan } from "@/services/planner/sync";
+import { discoverPlannerPlans } from "@/services/planner/discovery";
 
 export async function activateMicrosoftConnection() {
-  const user = await requireAction("configure");
+  const user = await requireUser();
   const account = await db.account.findFirst({ where: { userId: user.id, provider: "microsoft-entra-id" } });
   if (!account) throw new Error("MICROSOFT_ACCOUNT_NOT_CONNECTED");
-  await db.plannerConnection.upsert({
-    where: { organizationId_microsoftUserId: { organizationId: user.organizationId!, microsoftUserId: account.providerAccountId } },
-    create: { organizationId: user.organizationId!, microsoftUserId: account.providerAccountId, tenantId: readEnv("AZURE_AD_TENANT_ID")! },
-    update: { tenantId: readEnv("AZURE_AD_TENANT_ID")! },
-  });
+  await discoverPlannerPlans(user.organizationId!, readEnv("AZURE_AD_TENANT_ID")!, account.providerAccountId, await getMicrosoftAccessToken(user.id));
   revalidatePath("/settings/integrations");
 }
 
@@ -36,8 +33,20 @@ export async function syncMappedPlan(formData: FormData) {
   const user = await requireAction("configure");
   const planMappingId = z.string().cuid().parse(formData.get("planMappingId"));
   const mapping = await db.plannerPlanMapping.findFirstOrThrow({ where: { id: planMappingId, connection: { organizationId: user.organizationId! }, initiativeId: { not: null } } });
-  const token = await getMicrosoftAccessToken(user.id);
+  const connection = await db.plannerConnection.findUniqueOrThrow({ where: { id: mapping.connectionId } });
+  const token = await getMicrosoftAccessTokenByProviderAccountId(connection.microsoftUserId);
   await syncPlan(mapping.id, new PlannerService(new MicrosoftGraphClient(token)));
   revalidatePath("/settings/integrations");
   revalidatePath("/tasks");
+}
+
+const catalogMappingSchema = z.object({ mappingId: z.string().cuid(), initiativeId: z.string().cuid() });
+export async function assignCatalogPlan(formData: FormData) {
+  const user = await requireAction("configure");
+  const data = catalogMappingSchema.parse(Object.fromEntries(formData));
+  await db.plannerPlanMapping.updateMany({
+    where: { id: data.mappingId, connection: { organizationId: user.organizationId! } },
+    data: { initiativeId: data.initiativeId },
+  });
+  revalidatePath("/settings/integrations");
 }

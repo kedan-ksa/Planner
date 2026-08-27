@@ -3,9 +3,11 @@ import { canView } from '../lib/access-control';
 describe('RBAC',()=>{it('restricts technical settings',()=>{expect(can(Role.SUPER_ADMIN,'configure')).toBe(true);expect(can(Role.EXECUTIVE,'configure')).toBe(false)});it('allows department manager submissions',()=>expect(can(Role.DEPARTMENT_MANAGER,'submit')).toBe(true));});
 
 describe('navigation access', () => {
-  it('shows integrations and users only to super admins', () => {
+  it('lets every signed-in role discover its Microsoft plans while users stay admin-only', () => {
     expect(canView(Role.SUPER_ADMIN, 'integrations')).toBe(true);
-    expect(canView(Role.EXECUTIVE, 'integrations')).toBe(false);
+    expect(canView(Role.EXECUTIVE, 'integrations')).toBe(true);
+    expect(canView(Role.DEPARTMENT_MEMBER, 'integrations')).toBe(true);
+    expect(canView(Role.VIEWER, 'integrations')).toBe(true);
     expect(canView(Role.DEPARTMENT_MANAGER, 'users')).toBe(false);
   });
 

@@ -8,10 +8,7 @@ type TokenResponse = {
   scope?: string;
 };
 
-export async function getMicrosoftAccessToken(userId: string) {
-  const account = await db.account.findFirst({
-    where: { userId, provider: "microsoft-entra-id" },
-  });
+async function accessTokenForAccount(account: Awaited<ReturnType<typeof db.account.findFirst>>) {
   if (!account?.access_token) throw new Error("MICROSOFT_ACCOUNT_NOT_CONNECTED");
 
   const now = Math.floor(Date.now() / 1000);
@@ -48,4 +45,16 @@ export async function getMicrosoftAccessToken(userId: string) {
     },
   });
   return refreshed.access_token;
+}
+
+export async function getMicrosoftAccessToken(userId: string) {
+  return accessTokenForAccount(await db.account.findFirst({
+    where: { userId, provider: "microsoft-entra-id" },
+  }));
+}
+
+export async function getMicrosoftAccessTokenByProviderAccountId(providerAccountId: string) {
+  return accessTokenForAccount(await db.account.findFirst({
+    where: { provider: "microsoft-entra-id", providerAccountId },
+  }));
 }

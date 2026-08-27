@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { readEnv } from "@/lib/env";
 import authConfig from "@/auth.config";
+import { discoverPlannerPlans } from "@/services/planner/discovery";
 
 const providers = [...authConfig.providers];
 
@@ -51,7 +52,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig, adapter: PrismaAdapter(db), providers, session: { strategy: "jwt" },
   callbacks: {
     ...authConfig.callbacks,
-    signIn: async ({ user, account }) => account?.provider !== "microsoft-entra-id" || Boolean(user.email && isCorporateEmail(user.email)),
+    signIn: async ({ user, account }) => {
+      if (account?.provider !== "microsoft-entra-id") return true;
+      if (!user.id || !user.email || !isCorporateEmail(user.email)) return false;
+      const stored = await provisionMicrosoftUser({ id: user.id, email: user.email, name: user.name, image: user.image });
+      if (stored?.organizationId && account.access_token && account.providerAccountId) {
+        try {
+          await discoverPlannerPlans(
+            stored.organizationId,
+            readEnv("AZURE_AD_TENANT_ID")!,
+            account.providerAccountId,
+            account.access_token,
+          );
+        } catch {
+          // Planner discovery must never prevent a corporate user from signing in.
+        }
+      }
+      return true;
+    },
     jwt: async ({ token, user, trigger }) => {
       if (user) {
         const stored = await provisionMicrosoftUser({ id: user.id!, email: user.email, name: user.name, image: user.image });
