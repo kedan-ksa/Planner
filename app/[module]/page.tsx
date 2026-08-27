@@ -6,10 +6,11 @@ import { modules } from "@/lib/module-config";
 import { requirePage } from "@/lib/authz";
 import { visibleDepartmentIds } from "@/lib/department-scope";
 import type { NavigationKey } from "@/lib/access-control";
+import { Role } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-async function loadRows(module: string, departmentIds: string[] | null): Promise<string[][]> {
+async function loadRows(module: string, departmentIds: string[] | null, role: Role, microsoftUserId?: string): Promise<string[][]> {
   const departmentWhere = departmentIds === null ? {} : { id: { in: departmentIds } };
   const ownedWhere = departmentIds === null ? {} : { departmentId: { in: departmentIds } };
   switch (module) {
@@ -72,6 +73,27 @@ async function loadRows(module: string, departmentIds: string[] | null): Promise
         item.status,
       ]);
     }
+    case "tasks": {
+      const initiatives = await db.initiative.findMany({ where: ownedWhere, select: { id: true, title: true } });
+      const tasks = await db.task.findMany({ where: { initiativeId: { in: initiatives.map((item) => item.id) } }, orderBy: [{ dueDate: "asc" }, { title: "asc" }] });
+      const externalIds = tasks.flatMap((item) => item.externalId ? [item.externalId] : []);
+      const externalTasks = externalIds.length ? await db.externalEntity.findMany({ where: { provider: "MICROSOFT_PLANNER", entityType: "TASK", externalId: { in: externalIds } } }) : [];
+      const accounts = await db.account.findMany({ where: { provider: "microsoft-entra-id" }, select: { providerAccountId: true, userId: true } });
+      const users = accounts.length ? await db.user.findMany({ where: { id: { in: accounts.map((item) => item.userId) } }, select: { id: true, name: true } }) : [];
+      const userNames = new Map(users.map((item) => [item.id, item.name]));
+      const assigneeNames = new Map(accounts.map((item) => [item.providerAccountId, userNames.get(item.userId) ?? "مستخدم Microsoft"]));
+      const initiativeNames = new Map(initiatives.map((item) => [item.id, item.title]));
+      const payloadByExternalId = new Map(externalTasks.map((item) => [item.externalId, item.payload]));
+      const personalOnly = role === Role.DEPARTMENT_MEMBER || role === Role.VIEWER;
+
+      return tasks.flatMap((item) => {
+        const payload = item.externalId ? payloadByExternalId.get(item.externalId) : undefined;
+        const raw = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
+        const assignments = raw.assignments && typeof raw.assignments === "object" && !Array.isArray(raw.assignments) ? Object.keys(raw.assignments as Record<string, unknown>) : [];
+        if (personalOnly && (!microsoftUserId || !assignments.includes(microsoftUserId))) return [];
+        return [[item.title, initiativeNames.get(item.initiativeId) ?? "غير محدد", assignments.map((id) => assigneeNames.get(id) ?? "مستخدم Planner").join("، ") || "غير مسند", item.dueDate?.toLocaleDateString("ar-SA") ?? "—", item.status]];
+      });
+    }
     default:
       return [];
   }
@@ -83,8 +105,9 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
   if (!config) notFound();
   const user = await requirePage(module as NavigationKey);
   const departmentIds = await visibleDepartmentIds(user.role, user.organizationId, user.departmentId);
+  const microsoftAccount = module === "tasks" ? await db.account.findFirst({ where: { userId: user.id, provider: "microsoft-entra-id" }, select: { providerAccountId: true } }) : null;
   const Icon = config.icon;
-  const rows = await loadRows(module, departmentIds);
+  const rows = await loadRows(module, departmentIds, user.role, microsoftAccount?.providerAccountId);
 
   return <DashboardShell><div className="p-5 lg:p-8">
     <div className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 p-3 text-teal-700"><Icon /></span><div><h1 className="text-2xl font-bold">{config.title}</h1><p className="text-sm text-slate-500">{config.description}</p></div></div><button className="flex items-center gap-2 rounded-xl bg-[#178f89] px-4 py-2.5 text-sm font-bold text-white"><Plus size={17} />إضافة جديد</button></div>
