@@ -14,7 +14,6 @@ export async function activateMicrosoftConnection() {
   const user = await requireAction("configure");
   const account = await db.account.findFirst({ where: { userId: user.id, provider: "microsoft-entra-id" } });
   if (!account) throw new Error("MICROSOFT_ACCOUNT_NOT_CONNECTED");
-  await getMicrosoftAccessToken(user.id);
   await db.plannerConnection.upsert({
     where: { organizationId_microsoftUserId: { organizationId: user.organizationId!, microsoftUserId: account.providerAccountId } },
     create: { organizationId: user.organizationId!, microsoftUserId: account.providerAccountId, tenantId: readEnv("AZURE_AD_TENANT_ID")! },
