@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireAction, requireUser } from "@/lib/authz";
 import { visibleDepartmentIds } from "@/lib/department-scope";
+import { can } from "@/lib/rbac";
 
 const createSchema = z.object({ periodId: z.string().cuid(), departmentId: z.string().cuid() });
 export async function createDepartmentReport(formData: FormData) {
@@ -32,6 +33,7 @@ export async function transitionReport(formData: FormData) {
   if (visible !== null && (!report.departmentId || !visible.includes(report.departmentId))) throw new Error("FORBIDDEN");
   const manager = user.role === Role.SUPER_ADMIN || user.role === Role.DEPARTMENT_MANAGER;
   const approver = user.role === Role.SUPER_ADMIN || user.role === Role.EXECUTIVE;
+  if (["start", "ready"].includes(intent) && !can(user.role, "update")) throw new Error("FORBIDDEN");
   const next = {
     start: ReportStatus.IN_PROGRESS,
     ready: ReportStatus.READY_FOR_REVIEW,
