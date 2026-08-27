@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { requireAction, requireUser } from "@/lib/authz";
 import { visibleDepartmentIds } from "@/lib/department-scope";
 import { can } from "@/lib/rbac";
+import { canTransitionReport } from "@/lib/report-workflow";
 
 const createSchema = z.object({ periodId: z.string().cuid(), departmentId: z.string().cuid() });
 export async function createDepartmentReport(formData: FormData) {
@@ -20,6 +21,14 @@ export async function createDepartmentReport(formData: FormData) {
     db.initiative.count({ where: { departmentId: data.departmentId } }),
     db.kPI.count({ where: { departmentId: data.departmentId } }),
   ]);
+  const existing = await db.report.findFirst({
+    where: { periodId: period.id, departmentId: department.id, type: period.type as ReportType, status: { not: ReportStatus.ARCHIVED } },
+    select: { id: true },
+  });
+  if (existing) {
+    revalidatePath("/reports");
+    return;
+  }
   await db.report.create({ data: { periodId: period.id, departmentId: department.id, title: `تقرير ${department.name} — ${period.name}`, type: period.type as ReportType, status: ReportStatus.DRAFT, completion: 20, summary: `مسودة آلية تشمل ${initiatives} مبادرات و${kpis} مؤشرات أداء.` } });
   revalidatePath("/reports");
 }
@@ -42,6 +51,7 @@ export async function transitionReport(formData: FormData) {
     return: ReportStatus.RETURNED,
     archive: ReportStatus.ARCHIVED,
   }[intent];
+  if (!canTransitionReport(report.status, intent)) throw new Error("INVALID_REPORT_TRANSITION");
   if (["submit", "archive"].includes(intent) && !manager) throw new Error("FORBIDDEN");
   if (["approve", "return"].includes(intent) && !approver) throw new Error("FORBIDDEN");
   await db.report.update({ where: { id: reportId }, data: { status: next, completion: intent === "approve" ? 100 : report.completion, submittedAt: intent === "submit" ? new Date() : report.submittedAt, approvedAt: intent === "approve" ? new Date() : report.approvedAt } });
