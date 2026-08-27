@@ -1,3 +1,11 @@
 # Permissions
 
-الأدوار: Super Admin، Executive، Department Manager، Department Member، Viewer. فحص الإجراء يتم في `lib/rbac.ts`، ويضاف له قيد department subtree في الاستعلامات. عمليات الاعتماد والإعدادات لا تتاح إلا للأدوار المخولة في الخادم.
+الأدوار: Super Admin، Executive، Department Manager، Department Member، Viewer. فحص الإجراء يتم في `lib/rbac.ts`، وفحص ظهور الصفحة في `lib/access-control.ts`، ويضاف قيد الإدارة والأقسام التابعة عبر `lib/department-scope.ts` إلى استعلامات الخادم.
+
+- Super Admin: كل الوحدات والبيانات والإعدادات والتكاملات والمستخدمون.
+- Executive: مؤشرات الشركة والتقارير والمخاطر والاعتمادات، دون الإعدادات التقنية.
+- Department Manager: نطاق إدارته والأقسام التابعة، مع تحديث البيانات وإرسال التقارير.
+- Department Member: المبادرات والمؤشرات والمهام والتقارير ضمن نطاق إدارته، دون الاعتماد.
+- Viewer: قراءة الخطة والنتائج فقط.
+
+إخفاء رابط في الواجهة ليس تفويضًا؛ كل صفحة وServer Action تتحقق من الدور والنطاق مجددًا في الخادم.

@@ -8,7 +8,9 @@
   "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
   "vars": {
     "AUTH_URL": "https://planner.ahmad-2a4.workers.dev",
-    "APP_URL": "https://planner.ahmad-2a4.workers.dev"
+    "APP_URL": "https://planner.ahmad-2a4.workers.dev",
+    "MICROSOFT_GRAPH_SCOPE": "openid profile email offline_access User.Read User.ReadBasic.All Group.Read.All Tasks.Read Files.Read.All Sites.Read.All",
+    "SHAREPOINT_SITE_HOSTNAME": "kedansa.sharepoint.com"
   },
   "hyperdrive": [
     {

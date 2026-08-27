@@ -3,15 +3,20 @@ import { Download, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard-shell";
 import { db } from "@/lib/db";
 import { modules } from "@/lib/module-config";
+import { requirePage } from "@/lib/authz";
+import { visibleDepartmentIds } from "@/lib/department-scope";
+import type { NavigationKey } from "@/lib/access-control";
 
 export const dynamic = "force-dynamic";
 
-async function loadRows(module: string): Promise<string[][]> {
+async function loadRows(module: string, departmentIds: string[] | null): Promise<string[][]> {
+  const departmentWhere = departmentIds === null ? {} : { id: { in: departmentIds } };
+  const ownedWhere = departmentIds === null ? {} : { departmentId: { in: departmentIds } };
   switch (module) {
     case "axes":
       return (await db.strategicAxis.findMany({ orderBy: { title: "asc" } })).map((item) => [item.title, "—", String(item.startDate.getUTCFullYear()), `${Number(item.weight)}%`, `${Number(item.progress)}%`]);
     case "objectives": {
-      const objectives = await db.strategicObjective.findMany({ orderBy: { title: "asc" } });
+      const objectives = await db.strategicObjective.findMany({ where: ownedWhere, orderBy: { title: "asc" } });
       const axes = await db.strategicAxis.findMany({ select: { id: true, title: true } });
       const departments = await db.department.findMany({ select: { id: true, name: true } });
       const axisNames = new Map(axes.map((axis) => [axis.id, axis.title]));
@@ -26,13 +31,13 @@ async function loadRows(module: string): Promise<string[][]> {
       ]);
     }
     case "kpis":
-      return (await db.kPI.findMany({ orderBy: { name: "asc" } })).map((item) => [item.name, `${Number(item.target)}${item.unit ?? ""}`, item.currentValue === null ? "لم يُحدّث" : `${Number(item.currentValue)}${item.unit ?? ""}`, item.currentValue === null || Number(item.target) === 0 ? "—" : `${Math.round((Number(item.currentValue) / Number(item.target)) * 100)}%`, item.currentValue === null ? "بانتظار التحديث" : "محدّث"]);
+      return (await db.kPI.findMany({ where: ownedWhere, orderBy: { name: "asc" } })).map((item) => [item.name, `${Number(item.target)}${item.unit ?? ""}`, item.currentValue === null ? "لم يُحدّث" : `${Number(item.currentValue)}${item.unit ?? ""}`, item.currentValue === null || Number(item.target) === 0 ? "—" : `${Math.round((Number(item.currentValue) / Number(item.target)) * 100)}%`, item.currentValue === null ? "بانتظار التحديث" : "محدّث"]);
     case "departments": {
       // Keep this as two simple queries. Prisma's nested relation-count query
       // can leave the node-postgres driver waiting indefinitely in a Worker,
       // even when the same database is reached through Hyperdrive.
-      const departments = await db.department.findMany({ orderBy: { name: "asc" } });
-      const initiatives = await db.initiative.findMany({ select: { departmentId: true } });
+      const departments = await db.department.findMany({ where: departmentWhere, orderBy: { name: "asc" } });
+      const initiatives = await db.initiative.findMany({ where: ownedWhere, select: { departmentId: true } });
       const initiativeCounts = new Map<string, number>();
 
       for (const initiative of initiatives) {
@@ -46,6 +51,7 @@ async function loadRows(module: string): Promise<string[][]> {
     }
     case "initiatives": {
       const initiatives = await db.initiative.findMany({
+        where: ownedWhere,
         orderBy: { title: "asc" },
         select: {
           title: true,
@@ -75,8 +81,10 @@ export default async function ModulePage({ params }: { params: Promise<{ module:
   const { module } = await params;
   const config = modules[module];
   if (!config) notFound();
+  const user = await requirePage(module as NavigationKey);
+  const departmentIds = await visibleDepartmentIds(user.role, user.organizationId, user.departmentId);
   const Icon = config.icon;
-  const rows = await loadRows(module);
+  const rows = await loadRows(module, departmentIds);
 
   return <DashboardShell><div className="p-5 lg:p-8">
     <div className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 p-3 text-teal-700"><Icon /></span><div><h1 className="text-2xl font-bold">{config.title}</h1><p className="text-sm text-slate-500">{config.description}</p></div></div><button className="flex items-center gap-2 rounded-xl bg-[#178f89] px-4 py-2.5 text-sm font-bold text-white"><Plus size={17} />إضافة جديد</button></div>
