@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireAction, requireUser } from "@/lib/authz";
@@ -32,12 +33,19 @@ export async function savePlanMapping(formData: FormData) {
 export async function syncMappedPlan(formData: FormData) {
   const user = await requireAction("configure");
   const planMappingId = z.string().cuid().parse(formData.get("planMappingId"));
-  const mapping = await db.plannerPlanMapping.findFirstOrThrow({ where: { id: planMappingId, connection: { organizationId: user.organizationId! }, initiativeId: { not: null } } });
-  const connection = await db.plannerConnection.findUniqueOrThrow({ where: { id: mapping.connectionId } });
-  const token = await getMicrosoftAccessTokenByProviderAccountId(connection.microsoftUserId);
-  await syncPlan(mapping.id, new PlannerService(new MicrosoftGraphClient(token)));
-  revalidatePath("/settings/integrations");
-  revalidatePath("/tasks");
+  let outcome = "success";
+  try {
+    const mapping = await db.plannerPlanMapping.findFirstOrThrow({ where: { id: planMappingId, connection: { organizationId: user.organizationId! }, initiativeId: { not: null } } });
+    const connection = await db.plannerConnection.findUniqueOrThrow({ where: { id: mapping.connectionId } });
+    const token = await getMicrosoftAccessTokenByProviderAccountId(connection.microsoftUserId);
+    await syncPlan(mapping.id, new PlannerService(new MicrosoftGraphClient(token)));
+    revalidatePath("/settings/integrations");
+    revalidatePath("/tasks");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "UNKNOWN_SYNC_ERROR";
+    outcome = /RECONNECT|TOKEN|ACCOUNT_NOT_CONNECTED/i.test(message) ? "reconnect" : "failed";
+  }
+  redirect(`/settings/integrations?sync=${outcome}`);
 }
 
 const catalogMappingSchema = z.object({ mappingId: z.string().cuid(), initiativeId: z.string().cuid() });
@@ -49,4 +57,5 @@ export async function assignCatalogPlan(formData: FormData) {
     data: { initiativeId: data.initiativeId },
   });
   revalidatePath("/settings/integrations");
+  redirect("/settings/integrations?mapping=saved");
 }
