@@ -271,7 +271,7 @@ model Task {
   initiative      Initiative   @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
   assignee        User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
   updates         TaskUpdate[]
-  updatedAt       DateTime     @updatedAt
+  updatedAt       DateTime     @default(now()) @updatedAt
 }
 
 model TaskUpdate {
