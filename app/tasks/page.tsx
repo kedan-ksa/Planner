@@ -23,7 +23,8 @@ export default async function TasksPage() {
   });
   const tasks = await db.task.findMany({
     where: { initiativeId: { in: initiatives.map((item) => item.id) } },
-    orderBy: [{ dueDate: "asc" }, { title: "asc" }],
+    orderBy: [{ updatedAt: "desc" }, { dueDate: "asc" }],
+    take: 50,
   });
   const externalIds = tasks.flatMap((task) => task.externalId ? [task.externalId] : []);
   const [externalTasks, account, members, recentUpdates] = await Promise.all([
@@ -54,7 +55,7 @@ export default async function TasksPage() {
   });
 
   return <DashboardShell><div className="p-5 lg:p-8">
-    <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 p-3 text-teal-700"><ListChecks/></span><div><h1 className="text-2xl font-bold">المهام والتحديثات</h1><p className="text-sm text-slate-500">كل موظف يحدّث مهامه المسندة، والمدير يتابع مهام إدارته وسجل التغييرات</p></div></div>
+    <div className="flex items-center gap-3"><span className="rounded-xl bg-teal-50 p-3 text-teal-700"><ListChecks/></span><div><h1 className="text-2xl font-bold">المهام والتحديثات</h1><p className="text-sm text-slate-500">كل موظف يحدّث مهامه المسندة، والمدير يتابع مهام إدارته وسجل التغييرات · تعرض أحدث 50 مهمة</p></div></div>
     <div className="mt-6 grid gap-3 sm:grid-cols-3"><div className="card p-4"><p className="text-xs text-slate-500">المهام الظاهرة</p><b className="text-2xl">{visibleTasks.length}</b></div><div className="card p-4"><p className="text-xs text-slate-500">مكتملة</p><b className="text-2xl text-emerald-700">{visibleTasks.filter((task)=>task.status===WorkStatus.COMPLETED).length}</b></div><div className="card p-4"><p className="text-xs text-slate-500">تحتاج متابعة</p><b className="text-2xl text-amber-700">{visibleTasks.filter((task)=>task.status===WorkStatus.OVERDUE||task.status===WorkStatus.BLOCKED||task.status===WorkStatus.NEEDS_ATTENTION).length}</b></div></div>
     <div className="mt-5 space-y-4">{visibleTasks.map((task)=>{const initiative=initiativeById.get(task.initiativeId);const canEdit=user.role===Role.SUPER_ADMIN||user.role===Role.DEPARTMENT_MANAGER||task.assigneeId===user.id||(user.role===Role.DEPARTMENT_MEMBER);const history=updatesByTask.get(task.id)??[];return <article key={task.id} className="card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold">{task.title}</h2><p className="mt-1 text-sm text-slate-500">{initiative?.title}</p></div><span className="badge bg-blue-50 text-blue-700">{statusNames[task.status]}</span></div><div className="mt-4 grid gap-3 text-sm sm:grid-cols-3"><div className="flex items-center gap-2"><UserRound size={16}/>{task.assigneeId?memberNames.get(task.assigneeId)??"مستخدم":"غير مسند داخليًا"}</div><div className="flex items-center gap-2"><Clock3 size={16}/>{task.dueDate?.toLocaleDateString("ar-SA")??"بلا موعد"}</div><div className="flex items-center gap-2"><CheckCircle2 size={16}/>{task.percentComplete}% إنجاز</div></div><div className="mt-3 h-2 rounded-full bg-slate-100"><div className="h-full rounded-full bg-teal-600" style={{width:`${task.percentComplete}%`}}/></div>
       {(user.role===Role.SUPER_ADMIN||user.role===Role.DEPARTMENT_MANAGER)&&<form action={assignTask} className="mt-4 flex flex-wrap gap-2"><input type="hidden" name="taskId" value={task.id}/><select name="assigneeId" defaultValue={task.assigneeId??""} className="min-w-64 rounded-lg border p-2 text-sm"><option value="">غير مسند داخليًا</option>{members.filter((member)=>!initiative||member.departmentId===initiative.departmentId).map((member)=><option key={member.id} value={member.id}>{member.name}</option>)}</select><button className="rounded-lg border px-4 py-2 text-sm font-medium">حفظ المسؤول</button></form>}
