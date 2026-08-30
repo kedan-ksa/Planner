@@ -26,18 +26,19 @@ export async function syncPlan(planMappingId: string, planner: PlannerService) {
         return Prisma.sql`(
           ${crypto.randomUUID()}, ${mapping.initiativeId}, ${task.title},
           ${task.dueDateTime ? new Date(task.dueDateTime) : null}, ${task.percentComplete},
-          CAST(${status} AS "WorkStatus"), ${task.id}
+          CAST(${status} AS "WorkStatus"), ${task.id}, NOW()
         )`;
       });
       await db.$executeRaw(Prisma.sql`
-        INSERT INTO "Task" ("id", "initiativeId", "title", "dueDate", "percentComplete", "status", "externalId")
+        INSERT INTO "Task" ("id", "initiativeId", "title", "dueDate", "percentComplete", "status", "externalId", "updatedAt")
         VALUES ${Prisma.join(taskRows)}
         ON CONFLICT ("externalId") DO UPDATE SET
           "initiativeId" = EXCLUDED."initiativeId",
           "title" = EXCLUDED."title",
           "dueDate" = EXCLUDED."dueDate",
           "percentComplete" = EXCLUDED."percentComplete",
-          "status" = EXCLUDED."status"
+          "status" = EXCLUDED."status",
+          "updatedAt" = NOW()
       `);
 
       const internalTasks = await db.task.findMany({

@@ -8,6 +8,7 @@ import { requireAction, requireUser } from "@/lib/authz";
 import { visibleDepartmentIds } from "@/lib/department-scope";
 import { can } from "@/lib/rbac";
 import { canTransitionReport } from "@/lib/report-workflow";
+import { createApprovalChain } from "@/lib/approval-workflow";
 
 const createSchema = z.object({ periodId: z.string().cuid(), departmentId: z.string().cuid() });
 export async function createDepartmentReport(formData: FormData) {
@@ -33,6 +34,26 @@ export async function createDepartmentReport(formData: FormData) {
   revalidatePath("/reports");
 }
 
+const contentSchema = z.object({
+  reportId: z.string().cuid(),
+  summary: z.string().trim().min(3).max(12000),
+  achievements: z.string().trim().min(3).max(12000),
+  challenges: z.string().trim().max(12000).optional(),
+  recommendations: z.string().trim().max(12000).optional(),
+  nextSteps: z.string().trim().min(3).max(12000),
+});
+export async function updateReportContent(formData: FormData) {
+  const user = await requireAction("update");
+  const data = contentSchema.parse(Object.fromEntries(formData));
+  const report = await db.report.findUniqueOrThrow({ where: { id: data.reportId } });
+  const visible = await visibleDepartmentIds(user.role, user.organizationId, user.departmentId);
+  if (visible !== null && (!report.departmentId || !visible.includes(report.departmentId))) throw new Error("FORBIDDEN");
+  if (report.status === ReportStatus.SUBMITTED || report.status === ReportStatus.APPROVED || report.status === ReportStatus.ARCHIVED) throw new Error("REPORT_LOCKED");
+  const completion = [data.summary, data.achievements, data.challenges, data.recommendations, data.nextSteps].filter((value) => value?.trim()).length * 20;
+  await db.report.update({ where: { id: report.id }, data: { summary: data.summary, achievements: data.achievements, challenges: data.challenges || null, recommendations: data.recommendations || null, nextSteps: data.nextSteps, completion, templateKey: report.templateKey ?? "department-standard-v1", templateData: { sections: ["summary", "achievements", "challenges", "recommendations", "nextSteps"] } } });
+  revalidatePath("/reports");
+}
+
 const transitionSchema = z.object({ reportId: z.string().cuid(), intent: z.enum(["start", "ready", "submit", "approve", "return", "archive"]) });
 export async function transitionReport(formData: FormData) {
   const user = await requireUser();
@@ -54,6 +75,15 @@ export async function transitionReport(formData: FormData) {
   if (!canTransitionReport(report.status, intent)) throw new Error("INVALID_REPORT_TRANSITION");
   if (["submit", "archive"].includes(intent) && !manager) throw new Error("FORBIDDEN");
   if (["approve", "return"].includes(intent) && !approver) throw new Error("FORBIDDEN");
+  if (intent === "approve") {
+    const pending = await db.approval.count({ where: { reportId, status: "PENDING" } });
+    if (pending) throw new Error("USE_APPROVAL_CENTER");
+  }
   await db.report.update({ where: { id: reportId }, data: { status: next, completion: intent === "approve" ? 100 : report.completion, submittedAt: intent === "submit" ? new Date() : report.submittedAt, approvedAt: intent === "approve" ? new Date() : report.approvedAt } });
+  if (intent === "submit" && report.departmentId && user.organizationId) {
+    const existingApprovals = await db.approval.count({ where: { reportId } });
+    if (!existingApprovals) await createApprovalChain({ organizationId: user.organizationId, departmentId: report.departmentId, entityType: "REPORT", entityId: report.id, reportId: report.id, requestedById: user.id });
+  }
   revalidatePath("/reports");
+  revalidatePath("/approvals");
 }

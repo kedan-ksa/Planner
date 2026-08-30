@@ -93,50 +93,80 @@ enum ApprovalStatus {
   RETURNED
 }
 
+enum DepartmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ApprovalActorType {
+  USER
+  ROLE
+  DIRECT_MANAGER
+  DEPARTMENT_MANAGER
+}
+
+enum TaskUpdateSource {
+  MANUAL
+  PLANNER
+}
+
 model Organization {
-  id           String          @id @default(cuid())
-  name         String
-  code         String          @unique
-  primaryColor String          @default("#0f6f66")
-  departments  Department[]
-  users        User[]
-  axes         StrategicAxis[]
+  id                String             @id @default(cuid())
+  name              String
+  code              String             @unique
+  primaryColor      String             @default("#0f6f66")
+  departments       Department[]
+  users             User[]
+  axes              StrategicAxis[]
+  approvalWorkflows ApprovalWorkflow[]
 }
 
 model Department {
-  id             String               @id @default(cuid())
-  organizationId String
-  name           String
-  code           String
-  parentId       String?
-  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent         Department?          @relation("DepartmentTree", fields: [parentId], references: [id])
-  children       Department[]         @relation("DepartmentTree")
-  users          User[]
-  objectives     StrategicObjective[]
-  initiatives    Initiative[]
-  kpis           KPI[]
+  id                String               @id @default(cuid())
+  organizationId    String
+  name              String
+  code              String
+  parentId          String?
+  managerId         String?
+  status            DepartmentStatus     @default(ACTIVE)
+  sortOrder         Int                  @default(0)
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent            Department?          @relation("DepartmentTree", fields: [parentId], references: [id])
+  children          Department[]         @relation("DepartmentTree")
+  manager           User?                @relation("DepartmentManager", fields: [managerId], references: [id])
+  users             User[]
+  approvalWorkflows ApprovalWorkflow[]
+  objectives        StrategicObjective[]
+  initiatives       Initiative[]
+  kpis              KPI[]
 
   @@unique([organizationId, code])
 }
 
 model User {
-  id             String         @id @default(cuid())
-  organizationId String?
-  departmentId   String?
-  name           String
-  email          String         @unique
-  emailVerified  DateTime?
-  image          String?
-  passwordHash   String?
-  role           Role           @default(DEPARTMENT_MEMBER)
-  active         Boolean        @default(true)
-  organization   Organization?  @relation(fields: [organizationId], references: [id])
-  department     Department?    @relation(fields: [departmentId], references: [id])
-  accounts       Account[]
-  sessions       Session[]
-  notifications  Notification[]
-  auditLogs      AuditLog[]
+  id                 String                 @id @default(cuid())
+  organizationId     String?
+  departmentId       String?
+  managerId          String?
+  name               String
+  email              String                 @unique
+  emailVerified      DateTime?
+  image              String?
+  passwordHash       String?
+  role               Role                   @default(DEPARTMENT_MEMBER)
+  active             Boolean                @default(true)
+  organization       Organization?          @relation(fields: [organizationId], references: [id])
+  department         Department?            @relation(fields: [departmentId], references: [id])
+  manager            User?                  @relation("UserManager", fields: [managerId], references: [id])
+  directReports      User[]                 @relation("UserManager")
+  managedDepartments Department[]           @relation("DepartmentManager")
+  assignedTasks      Task[]                 @relation("TaskAssignee")
+  taskUpdates        TaskUpdate[]           @relation("TaskUpdateAuthor")
+  approvalSteps      ApprovalWorkflowStep[] @relation("ApprovalStepUser")
+  accounts           Account[]
+  sessions           Session[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
 }
 
 model Account {
@@ -229,14 +259,39 @@ model Initiative {
 }
 
 model Task {
-  id              String     @id @default(cuid())
+  id              String       @id @default(cuid())
   initiativeId    String
   title           String
+  description     String?
+  assigneeId      String?
   dueDate         DateTime?
-  percentComplete Int        @default(0)
-  status          WorkStatus @default(NOT_STARTED)
-  externalId      String?    @unique
-  initiative      Initiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  percentComplete Int          @default(0)
+  status          WorkStatus   @default(NOT_STARTED)
+  externalId      String?      @unique
+  initiative      Initiative   @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  assignee        User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  updates         TaskUpdate[]
+  updatedAt       DateTime     @updatedAt
+}
+
+model TaskUpdate {
+  id               String           @id @default(cuid())
+  taskId           String
+  updatedById      String
+  previousProgress Int
+  currentProgress  Int
+  previousStatus   WorkStatus
+  currentStatus    WorkStatus
+  note             String
+  challenges       String?
+  nextSteps        String?
+  evidenceUrl      String?
+  source           TaskUpdateSource @default(MANUAL)
+  createdAt        DateTime         @default(now())
+  task             Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  updatedBy        User             @relation("TaskUpdateAuthor", fields: [updatedById], references: [id])
+
+  @@index([taskId, createdAt])
 }
 
 model KPI {
@@ -317,6 +372,8 @@ model Report {
   challenges      String?
   recommendations String?
   nextSteps       String?
+  templateKey     String?
+  templateData    Json?
   submittedAt     DateTime?
   approvedAt      DateTime?
   createdAt       DateTime        @default(now())
@@ -336,7 +393,38 @@ model Approval {
   comment       String?
   createdAt     DateTime       @default(now())
   decidedAt     DateTime?
+  stepOrder     Int            @default(1)
   report        Report?        @relation(fields: [reportId], references: [id])
+}
+
+model ApprovalWorkflow {
+  id             String                 @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  name           String
+  entityType     String
+  active         Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department     Department?            @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  steps          ApprovalWorkflowStep[]
+
+  @@index([organizationId, departmentId, entityType])
+}
+
+model ApprovalWorkflowStep {
+  id             String            @id @default(cuid())
+  workflowId     String
+  stepOrder      Int
+  name           String
+  actorType      ApprovalActorType
+  approverRole   Role?
+  approverUserId String?
+  workflow       ApprovalWorkflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  approverUser   User?             @relation("ApprovalStepUser", fields: [approverUserId], references: [id])
+
+  @@unique([workflowId, stepOrder])
 }
 
 model Risk {

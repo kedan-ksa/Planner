@@ -10,6 +10,7 @@ const updateUserSchema = z.object({
   userId: z.string().cuid(),
   role: z.nativeEnum(Role),
   departmentId: z.string().cuid().or(z.literal("")),
+  managerId: z.string().cuid().or(z.literal("")),
   active: z.enum(["true", "false"]),
 });
 
@@ -21,7 +22,7 @@ export async function updateUserAccess(formData: FormData) {
   }
   await db.user.updateMany({
     where: { id: parsed.userId, organizationId: actor.organizationId },
-    data: { role: parsed.role, departmentId: parsed.departmentId || null, active: parsed.active === "true" },
+    data: { role: parsed.role, departmentId: parsed.departmentId || null, managerId: parsed.managerId || null, active: parsed.active === "true" },
   });
   revalidatePath("/users");
 }
