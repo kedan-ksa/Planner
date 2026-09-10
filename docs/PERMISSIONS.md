@@ -5,7 +5,7 @@
 - Super Admin: كل الوحدات والبيانات والإعدادات والتكاملات والمستخدمون.
 - Executive: مؤشرات الشركة والتقارير والمخاطر والاعتمادات، دون الإعدادات التقنية.
 - Department Manager: نطاق إدارته والأقسام التابعة، مع تحديث البيانات وإرسال التقارير.
-- Department Member: المبادرات والمؤشرات والمهام والتقارير ضمن نطاق إدارته، دون الاعتماد.
+- Department Member: تحديث مهامه المسندة، وإعداد التقارير ضمن نطاق إدارته. يمكنه دخول مركز الاعتمادات لاتخاذ القرار فقط في الطلب المسند إليه، ولا يعتمد طلبه بنفسه.
 - Viewer: قراءة الخطة والنتائج فقط.
 
 إخفاء رابط في الواجهة ليس تفويضًا؛ كل صفحة وServer Action تتحقق من الدور والنطاق مجددًا في الخادم.
@@ -21,3 +21,5 @@
 Authorization is enforced in server actions and route handlers. Hiding a control in the UI is never treated as authorization.
 
 Approval workflows are configured per department and entity type. Supported step resolvers are a named user, a role, the requester's direct manager, and the department manager.
+
+The current workflow editor supports REPORT only. Task assignment is checked before pagination; a member can see an assigned task in another department of the same organization. Viewer and executive roles cannot update task progress, even when assigned. User activation and role are reloaded from the database on each authorized request.

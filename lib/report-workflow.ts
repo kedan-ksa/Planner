@@ -5,7 +5,7 @@ export type ReportIntent = "start" | "ready" | "submit" | "approve" | "return" |
 const transitions: Record<ReportStatus, readonly ReportIntent[]> = {
   DRAFT: ["start"],
   IN_PROGRESS: ["ready"],
-  READY_FOR_REVIEW: ["submit"],
+  READY_FOR_REVIEW: ["submit", "start"],
   SUBMITTED: ["approve", "return"],
   RETURNED: ["start"],
   APPROVED: ["archive"],

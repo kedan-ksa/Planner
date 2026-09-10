@@ -11,13 +11,15 @@ type ScopedUser = {
 
 export async function canUpdateTask(user: ScopedUser, taskId: string) {
   if (user.role === Role.VIEWER || user.role === Role.EXECUTIVE) return false;
-  if (user.role === Role.SUPER_ADMIN) return true;
+  if (!user.organizationId) return false;
 
   const task = await db.task.findUnique({
     where: { id: taskId },
-    select: { assigneeId: true, externalId: true, initiative: { select: { departmentId: true } } },
+    select: { assigneeId: true, externalId: true, initiative: { select: { departmentId: true, department: { select: { organizationId: true } } } } },
   });
   if (!task) return false;
+  if (task.initiative.department.organizationId !== user.organizationId) return false;
+  if (user.role === Role.SUPER_ADMIN) return true;
   if (task.assigneeId === user.id) return true;
 
   if (user.role === Role.DEPARTMENT_MANAGER) {
