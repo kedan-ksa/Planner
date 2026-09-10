@@ -11,9 +11,10 @@ describe('navigation access', () => {
     expect(canView(Role.DEPARTMENT_MANAGER, 'users')).toBe(false);
   });
 
-  it('keeps approvals executive and reports available to departments', () => {
+  it('allows assigned department approvers to reach approvals while viewers cannot', () => {
     expect(canView(Role.EXECUTIVE, 'approvals')).toBe(true);
-    expect(canView(Role.DEPARTMENT_MANAGER, 'approvals')).toBe(false);
+    expect(canView(Role.DEPARTMENT_MANAGER, 'approvals')).toBe(true);
+    expect(canView(Role.VIEWER, 'approvals')).toBe(false);
     expect(canView(Role.DEPARTMENT_MEMBER, 'reports')).toBe(true);
   });
 });

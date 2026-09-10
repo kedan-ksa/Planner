@@ -6,9 +6,10 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/authz";
 import { canUpdateTask } from "@/lib/task-access";
+import { taskProgressStatus } from "@/lib/task-progress";
 
 const updateSchema = z.object({
-  taskId: z.string().cuid(),
+  taskId: z.string().min(1).max(128),
   progress: z.coerce.number().int().min(0).max(100),
   status: z.nativeEnum(WorkStatus),
   note: z.string().trim().min(3).max(4000),
@@ -21,39 +22,42 @@ export async function updateTaskProgress(formData: FormData) {
   const user = await requireUser();
   const data = updateSchema.parse(Object.fromEntries(formData));
   if (!(await canUpdateTask(user, data.taskId))) throw new Error("FORBIDDEN");
-  const task = await db.task.findUniqueOrThrow({ where: { id: data.taskId } });
-
-  await db.$transaction([
-    db.task.update({ where: { id: task.id }, data: { percentComplete: data.progress, status: data.status } }),
-    db.taskUpdate.create({ data: {
+  const status = taskProgressStatus(data.progress, data.status);
+  const selected = await db.task.findUniqueOrThrow({ where: { id: data.taskId }, select: { initiativeId: true } });
+  await db.$transaction(async (tx) => {
+    // Serialize sibling updates so the initiative aggregate and audit history agree.
+    await tx.$queryRaw`SELECT "id" FROM "Initiative" WHERE "id" = ${selected.initiativeId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "Task" WHERE "id" = ${data.taskId} FOR UPDATE`;
+    const task = await tx.task.findUniqueOrThrow({ where: { id: data.taskId } });
+    await tx.task.update({ where: { id: task.id }, data: { percentComplete: data.progress, status } });
+    await tx.taskUpdate.create({ data: {
       taskId: task.id,
       updatedById: user.id,
       previousProgress: task.percentComplete,
       currentProgress: data.progress,
       previousStatus: task.status,
-      currentStatus: data.status,
+      currentStatus: status,
       note: data.note,
       challenges: data.challenges || null,
       nextSteps: data.nextSteps || null,
       evidenceUrl: data.evidenceUrl || null,
-    } }),
-    db.auditLog.create({ data: {
+    } });
+    await tx.auditLog.create({ data: {
       userId: user.id,
       action: "TASK_PROGRESS_UPDATED",
       entityType: "Task",
       entityId: task.id,
       oldValue: { progress: task.percentComplete, status: task.status },
-      newValue: { progress: data.progress, status: data.status },
-    } }),
-  ]);
-
-  const aggregate = await db.task.aggregate({ where: { initiativeId: task.initiativeId }, _avg: { percentComplete: true } });
-  await db.initiative.update({ where: { id: task.initiativeId }, data: { progress: aggregate._avg.percentComplete ?? 0 } });
+      newValue: { progress: data.progress, status },
+    } });
+    const aggregate = await tx.task.aggregate({ where: { initiativeId: task.initiativeId }, _avg: { percentComplete: true } });
+    await tx.initiative.update({ where: { id: task.initiativeId }, data: { progress: aggregate._avg.percentComplete ?? 0 } });
+  }, { timeout: 20000 });
   revalidatePath("/tasks");
   revalidatePath("/initiatives");
 }
 
-const assignSchema = z.object({ taskId: z.string().cuid(), assigneeId: z.string().cuid().or(z.literal("")) });
+const assignSchema = z.object({ taskId: z.string().min(1).max(128), assigneeId: z.string().cuid().or(z.literal("")) });
 export async function assignTask(formData: FormData) {
   const user = await requireUser();
   if (user.role !== Role.SUPER_ADMIN && user.role !== Role.DEPARTMENT_MANAGER) throw new Error("FORBIDDEN");

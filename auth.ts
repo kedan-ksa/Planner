@@ -37,12 +37,13 @@ async function provisionMicrosoftUser(user: { id: string; email?: string | null;
   const superAdminEmails = (readEnv("SUPER_ADMIN_EMAILS") ?? "ahmad@kedan.com.sa")
     .split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
   const current = await db.user.findUnique({ where: { id: user.id } });
+  if (current && !current.active) return null;
   const role = superAdminEmails.includes(user.email.toLowerCase()) ? Role.SUPER_ADMIN : current?.role ?? Role.DEPARTMENT_MEMBER;
   return db.user.update({
     where: { id: user.id },
     data: {
       name: user.name?.trim() || user.email.split("@")[0], email: user.email.toLowerCase(), image: user.image,
-      organizationId: current?.organizationId ?? organization.id, role, active: true,
+      organizationId: current?.organizationId ?? organization.id, role,
     },
     select: { id: true, role: true, departmentId: true, organizationId: true },
   });
@@ -56,6 +57,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider !== "microsoft-entra-id") return true;
       if (!user.id || !user.email || !isCorporateEmail(user.email)) return false;
       const stored = await provisionMicrosoftUser({ id: user.id, email: user.email, name: user.name, image: user.image });
+      if (!stored) return false;
       if (stored?.organizationId && account.access_token && account.providerAccountId) {
         try {
           await discoverPlannerPlans(

@@ -6,10 +6,14 @@ import { MicrosoftGraphClient } from "@/services/microsoft-graph/client";
 import { getMicrosoftAccessTokenByProviderAccountId } from "@/services/microsoft-graph/token";
 import { PlannerService } from "@/services/planner/service";
 import { syncPlan } from "@/services/planner/sync";
+import { isSameOriginMutation } from "@/lib/request-origin";
 
 const planMappingIdSchema = z.string().cuid();
 
 export async function POST(request: Request) {
+  if (!isSameOriginMutation(request)) {
+    return NextResponse.json({ error: "FORBIDDEN_ORIGIN" }, { status: 403 });
+  }
   let outcome = "success";
   try {
     const user = await requireAction("configure");

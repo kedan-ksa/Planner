@@ -3,11 +3,14 @@ import type { Role } from "@prisma/client";
 import { auth } from "@/auth";
 import { can, type Action } from "@/lib/rbac";
 import { assertCanView, type NavigationKey } from "@/lib/access-control";
+import { db } from "@/lib/db";
 
 export async function requireUser() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  return session.user;
+  const current = await db.user.findUnique({ where: { id: session.user.id }, select: { id: true, name: true, email: true, role: true, departmentId: true, organizationId: true, active: true } });
+  if (!current?.active || !current.organizationId) redirect("/login");
+  return { ...session.user, ...current };
 }
 
 export async function requireAction(action: Action) {
