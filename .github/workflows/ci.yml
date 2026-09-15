@@ -5,6 +5,13 @@ on:
   push:
     branches: [develop, staging, main]
 jobs:
+  container:
+    runs-on: ubuntu-latest
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production Docker image without publishing
+        run: docker build --tag planner-ci .
   verify:
     runs-on: ubuntu-latest
     steps:
