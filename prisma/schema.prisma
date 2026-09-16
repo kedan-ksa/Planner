@@ -163,6 +163,10 @@ model User {
   assignedTasks      Task[]                 @relation("TaskAssignee")
   taskUpdates        TaskUpdate[]           @relation("TaskUpdateAuthor")
   approvalSteps      ApprovalWorkflowStep[] @relation("ApprovalStepUser")
+  ownedAxes          StrategicAxis[]         @relation("AxisOwner")
+  ownedObjectives    StrategicObjective[]    @relation("ObjectiveOwner")
+  ownedInitiatives   Initiative[]            @relation("InitiativeOwner")
+  ownedKpis          KPI[]                   @relation("KpiOwner")
   accounts           Account[]
   sessions           Session[]
   notifications      Notification[]
@@ -205,6 +209,7 @@ model VerificationToken {
 model StrategicAxis {
   id             String               @id @default(cuid())
   organizationId String
+  ownerId        String?
   title          String
   description    String?
   weight         Decimal              @db.Decimal(5, 2)
@@ -213,15 +218,19 @@ model StrategicAxis {
   status         WorkStatus           @default(NOT_STARTED)
   progress       Decimal              @default(0) @db.Decimal(5, 2)
   organization   Organization         @relation(fields: [organizationId], references: [id])
+  owner          User?                @relation("AxisOwner", fields: [ownerId], references: [id])
   objectives     StrategicObjective[]
   initiatives    Initiative[]
   kpis           KPI[]
+
+  @@index([ownerId])
 }
 
 model StrategicObjective {
   id           String        @id @default(cuid())
   axisId       String
   departmentId String?
+  ownerUserId  String?
   title        String
   weight       Decimal       @db.Decimal(5, 2)
   startDate    DateTime
@@ -231,8 +240,11 @@ model StrategicObjective {
   status       WorkStatus    @default(NOT_STARTED)
   axis         StrategicAxis @relation(fields: [axisId], references: [id], onDelete: Cascade)
   department   Department?   @relation(fields: [departmentId], references: [id])
+  ownerUser    User?          @relation("ObjectiveOwner", fields: [ownerUserId], references: [id])
   initiatives  Initiative[]
   kpis         KPI[]
+
+  @@index([ownerUserId])
 }
 
 model Initiative {
@@ -240,6 +252,7 @@ model Initiative {
   axisId       String
   objectiveId  String
   departmentId String
+  ownerId      String?
   title        String
   description  String?
   startDate    DateTime
@@ -251,11 +264,14 @@ model Initiative {
   axis         StrategicAxis        @relation(fields: [axisId], references: [id])
   objective    StrategicObjective   @relation(fields: [objectiveId], references: [id])
   department   Department           @relation(fields: [departmentId], references: [id])
+  owner        User?                @relation("InitiativeOwner", fields: [ownerId], references: [id])
   tasks        Task[]
   kpis         KPI[]
   planMappings PlannerPlanMapping[]
   updates      ProgressUpdate[]
   risks        Risk[]
+
+  @@index([ownerId])
 }
 
 model Task {
@@ -301,6 +317,7 @@ model KPI {
   objectiveId  String?
   initiativeId String?
   departmentId String
+  ownerId      String?
   type         KpiType
   direction    KpiDirection
   baseline     Decimal?            @db.Decimal(18, 4)
@@ -314,7 +331,10 @@ model KPI {
   objective    StrategicObjective? @relation(fields: [objectiveId], references: [id])
   initiative   Initiative?         @relation(fields: [initiativeId], references: [id])
   department   Department          @relation(fields: [departmentId], references: [id])
+  owner        User?               @relation("KpiOwner", fields: [ownerId], references: [id])
   values       KPIValueHistory[]
+
+  @@index([ownerId])
 }
 
 model KPIValueHistory {
