@@ -8,8 +8,8 @@ export type NavigationKey =
 const access: Record<Role, ReadonlySet<NavigationKey>> = {
   SUPER_ADMIN: new Set(["dashboard", "strategy", "axes", "objectives", "initiatives", "kpis", "departments", "tasks", "reports", "risks", "approvals", "notifications", "integrations", "users", "settings"]),
   EXECUTIVE: new Set(["dashboard", "strategy", "axes", "objectives", "initiatives", "kpis", "departments", "tasks", "reports", "risks", "approvals", "notifications", "integrations"]),
-  DEPARTMENT_MANAGER: new Set(["dashboard", "objectives", "initiatives", "kpis", "departments", "tasks", "reports", "risks", "approvals", "notifications", "integrations"]),
-  DEPARTMENT_MEMBER: new Set(["dashboard", "initiatives", "kpis", "tasks", "reports", "risks", "approvals", "notifications", "integrations"]),
+  DEPARTMENT_MANAGER: new Set(["dashboard", "strategy", "objectives", "initiatives", "kpis", "departments", "tasks", "reports", "risks", "approvals", "notifications", "integrations"]),
+  DEPARTMENT_MEMBER: new Set(["dashboard", "strategy", "initiatives", "kpis", "tasks", "reports", "risks", "approvals", "notifications", "integrations"]),
   VIEWER: new Set(["dashboard", "strategy", "axes", "objectives", "initiatives", "kpis", "reports", "integrations"]),
 };
 

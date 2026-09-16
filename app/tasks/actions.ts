@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/authz";
 import { canUpdateTask } from "@/lib/task-access";
 import { taskProgressStatus } from "@/lib/task-progress";
+import { recalculateObjectiveProgress } from "@/lib/strategy-progress";
 
 const updateSchema = z.object({
   taskId: z.string().min(1).max(128),
@@ -23,7 +24,7 @@ export async function updateTaskProgress(formData: FormData) {
   const data = updateSchema.parse(Object.fromEntries(formData));
   if (!(await canUpdateTask(user, data.taskId))) throw new Error("FORBIDDEN");
   const status = taskProgressStatus(data.progress, data.status);
-  const selected = await db.task.findUniqueOrThrow({ where: { id: data.taskId }, select: { initiativeId: true } });
+  const selected = await db.task.findUniqueOrThrow({ where: { id: data.taskId }, select: { initiativeId: true, initiative: { select: { objectiveId: true } } } });
   await db.$transaction(async (tx) => {
     // Serialize sibling updates so the initiative aggregate and audit history agree.
     await tx.$queryRaw`SELECT "id" FROM "Initiative" WHERE "id" = ${selected.initiativeId} FOR UPDATE`;
@@ -52,6 +53,7 @@ export async function updateTaskProgress(formData: FormData) {
     } });
     const aggregate = await tx.task.aggregate({ where: { initiativeId: task.initiativeId }, _avg: { percentComplete: true } });
     await tx.initiative.update({ where: { id: task.initiativeId }, data: { progress: aggregate._avg.percentComplete ?? 0 } });
+    await recalculateObjectiveProgress(tx, selected.initiative.objectiveId);
   }, { timeout: 20000 });
   revalidatePath("/tasks");
   revalidatePath("/initiatives");
