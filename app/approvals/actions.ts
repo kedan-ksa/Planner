@@ -70,12 +70,18 @@ export async function decideApproval(formData: FormData) {
     if (status !== ApprovalStatus.APPROVED) {
       await tx.report.update({ where: { id: report.id }, data: { status: ReportStatus.RETURNED } });
       await tx.approval.updateMany({ where: { reportId: report.id, status: ApprovalStatus.PENDING }, data: { status: ApprovalStatus.RETURNED, comment: "أُغلقت الخطوة لإعادة التقرير للتعديل", decidedAt: new Date() } });
+      await tx.notification.create({ data: { userId: approval.requestedById, category: "REPORTS", title: "أعيد التقرير للتعديل", body: data.comment!, important: true, entityType: "Report", entityId: report.id } });
     } else if (round.every((step) => step.id === approval.id || step.status === ApprovalStatus.APPROVED)) {
       await tx.report.update({ where: { id: report.id }, data: { status: ReportStatus.APPROVED, approvedAt: new Date() } });
+      await tx.notification.create({ data: { userId: approval.requestedById, category: "REPORTS", title: "تم اعتماد التقرير", body: report.title, entityType: "Report", entityId: report.id } });
+    } else {
+      const next = round.find((step) => step.stepOrder > approval.stepOrder && step.status === ApprovalStatus.PENDING);
+      if (next?.approverId) await tx.notification.create({ data: { userId: next.approverId, category: "APPROVALS", title: "تقرير ينتظر اعتمادك", body: report.title, important: true, entityType: "Report", entityId: report.id } });
     }
     await tx.auditLog.create({ data: { userId: user.id, action: "REPORT_APPROVAL_DECIDED", entityType: "Report", entityId: report.id, oldValue: { approvalId: approval.id, status: approval.status }, newValue: { status, comment: data.comment ?? null } } });
   }, { timeout: 20000 });
   revalidatePath("/approvals");
   revalidatePath("/reports");
   revalidatePath(`/reports/${selected.reportId}`);
+  revalidatePath("/notifications");
 }
