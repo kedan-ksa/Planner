@@ -139,6 +139,7 @@ model Department {
   objectives        StrategicObjective[]
   initiatives       Initiative[]
   kpis              KPI[]
+  risks             Risk[]
 
   @@unique([organizationId, code])
 }
@@ -167,6 +168,7 @@ model User {
   ownedObjectives    StrategicObjective[]    @relation("ObjectiveOwner")
   ownedInitiatives   Initiative[]            @relation("InitiativeOwner")
   ownedKpis          KPI[]                   @relation("KpiOwner")
+  ownedRisks         Risk[]                  @relation("RiskOwner")
   accounts           Account[]
   sessions           Session[]
   notifications      Notification[]
@@ -461,6 +463,13 @@ model Risk {
   dueDate        DateTime?
   status         WorkStatus  @default(ON_TRACK)
   initiative     Initiative? @relation(fields: [initiativeId], references: [id])
+  department     Department  @relation(fields: [departmentId], references: [id])
+  owner          User?       @relation("RiskOwner", fields: [ownerId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @default(now()) @updatedAt
+
+  @@index([departmentId, status])
+  @@index([ownerId])
 }
 
 model Notification {

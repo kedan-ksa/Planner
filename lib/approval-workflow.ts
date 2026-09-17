@@ -39,5 +39,16 @@ export async function createApprovalChain(input: {
     reportId: input.reportId, entityType: input.entityType, entityId: input.entityId,
     requestedById: input.requestedById, status: "PENDING", approverId: step.approverId, stepOrder: offset + step.stepOrder,
   } }));
+  if (created[0]?.approverId) {
+    await client.notification.create({ data: {
+      userId: created[0].approverId,
+      category: "APPROVALS",
+      title: "طلب جديد ينتظر اعتمادك",
+      body: input.entityType === "REPORT" ? "تم إرسال تقرير جديد ضمن سلسلة الاعتماد." : `يوجد طلب اعتماد جديد من نوع ${input.entityType}.`,
+      important: true,
+      entityType: input.entityType === "REPORT" ? "Report" : input.entityType,
+      entityId: input.entityId,
+    } });
+  }
   return created;
 }

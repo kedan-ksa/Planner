@@ -1,18 +1,20 @@
 import { Role } from "@prisma/client";
 import { db } from "@/lib/db";
 
-export async function visibleDepartmentIds(
+type DepartmentNode = {
+  id: string;
+  parentId: string | null;
+};
+
+export function departmentScopeFromTree(
   role: Role,
-  organizationId?: string | null,
-  departmentId?: string | null,
+  departmentId: string | null | undefined,
+  departments: DepartmentNode[],
 ) {
   if (role === Role.SUPER_ADMIN || role === Role.EXECUTIVE) return null;
-  if (!organizationId || !departmentId) return [];
+  if (!departmentId) return [];
+  if (role !== Role.DEPARTMENT_MANAGER) return [departmentId];
 
-  const departments = await db.department.findMany({
-    where: { organizationId },
-    select: { id: true, parentId: true },
-  });
   const visible = new Set([departmentId]);
   let changed = true;
   while (changed) {
@@ -25,4 +27,20 @@ export async function visibleDepartmentIds(
     }
   }
   return [...visible];
+}
+
+export async function visibleDepartmentIds(
+  role: Role,
+  organizationId?: string | null,
+  departmentId?: string | null,
+) {
+  if (role === Role.SUPER_ADMIN || role === Role.EXECUTIVE) return null;
+  if (!organizationId || !departmentId) return [];
+  if (role !== Role.DEPARTMENT_MANAGER) return [departmentId];
+
+  const departments = await db.department.findMany({
+    where: { organizationId },
+    select: { id: true, parentId: true },
+  });
+  return departmentScopeFromTree(role, departmentId, departments);
 }
