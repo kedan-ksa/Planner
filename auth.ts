@@ -6,6 +6,13 @@ import { compare } from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { readEnv } from "@/lib/env";
+import {
+  isAllowedMicrosoftIdentity,
+  isCorporateEmail,
+  resolveMicrosoftEmail,
+  shouldAllowMicrosoftSignIn,
+  type MicrosoftIdentityClaims,
+} from "@/lib/microsoft-identity";
 import authConfig from "@/auth.config";
 import { discoverPlannerPlans } from "@/services/planner/discovery";
 
@@ -24,13 +31,9 @@ if (process.env.LOCAL_AUTH_ENABLED === "true") {
   }) as never);
 }
 
-function isCorporateEmail(email: string) {
-  const domain = readEnv("COMPANY_DOMAIN") ?? "kedan.com.sa";
-  return email.toLowerCase().endsWith(`@${domain.toLowerCase()}`);
-}
-
-async function provisionMicrosoftUser(user: { id: string; email?: string | null; name?: string | null; image?: string | null }) {
-  if (!user.email || !isCorporateEmail(user.email)) return null;
+async function provisionMicrosoftUser(user: { id: string; email: string; name?: string | null; image?: string | null }) {
+  const companyDomain = readEnv("COMPANY_DOMAIN") ?? "kedan.com.sa";
+  if (!isCorporateEmail(user.email, companyDomain)) return null;
   const organization = await db.organization.upsert({
     where: { code: "KEDAN" }, update: { name: "كدان" }, create: { name: "كدان", code: "KEDAN" },
   });
@@ -53,29 +56,44 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig, adapter: PrismaAdapter(db), providers, session: { strategy: "jwt" },
   callbacks: {
     ...authConfig.callbacks,
-    signIn: async ({ user, account }) => {
+    signIn: async ({ user, account, profile }) => {
       if (account?.provider !== "microsoft-entra-id") return true;
-      if (!user.id || !user.email || !isCorporateEmail(user.email)) return false;
-      const stored = await provisionMicrosoftUser({ id: user.id, email: user.email, name: user.name, image: user.image });
-      if (!stored) return false;
-      if (stored?.organizationId && account.access_token && account.providerAccountId) {
-        try {
-          await discoverPlannerPlans(
-            stored.organizationId,
-            readEnv("AZURE_AD_TENANT_ID")!,
-            account.providerAccountId,
-            account.access_token,
-          );
-        } catch {
-          // Planner discovery must never prevent a corporate user from signing in.
-        }
-      }
-      return true;
+      const rawProfile = (profile ?? {}) as MicrosoftIdentityClaims;
+      const claims = { ...rawProfile, email: resolveMicrosoftEmail(rawProfile) ?? user.email };
+      const identitySettings = {
+        companyDomain: readEnv("COMPANY_DOMAIN") ?? "kedan.com.sa",
+        tenantId: readEnv("AZURE_AD_TENANT_ID") ?? "",
+      };
+      if (!user.id || !isAllowedMicrosoftIdentity(claims, identitySettings)) return false;
+
+      // For a first-time OAuth sign-in Auth.js has not created the database user yet.
+      // Only inspect an existing linked user here; provisioning happens in `jwt` after creation.
+      const current = await db.user.findUnique({ where: { id: user.id }, select: { active: true } });
+      return shouldAllowMicrosoftSignIn(claims, identitySettings, current?.active ?? null);
     },
-    jwt: async ({ token, user, trigger }) => {
+    jwt: async ({ token, user, account, profile, trigger }) => {
       if (user) {
-        const stored = await provisionMicrosoftUser({ id: user.id!, email: user.email, name: user.name, image: user.image });
+        const rawProfile = (profile ?? {}) as MicrosoftIdentityClaims;
+        const microsoftEmail = account?.provider === "microsoft-entra-id"
+          ? resolveMicrosoftEmail(rawProfile) ?? user.email
+          : null;
+        const stored = account?.provider === "microsoft-entra-id" && microsoftEmail
+          ? await provisionMicrosoftUser({ id: user.id!, email: microsoftEmail, name: user.name, image: user.image })
+          : await db.user.findUnique({ where: { id: user.id! }, select: { id: true, role: true, departmentId: true, organizationId: true, active: true } });
+        if (!stored || ("active" in stored && !stored.active)) return null;
         token.role = stored?.role; token.departmentId = stored?.departmentId; token.organizationId = stored?.organizationId;
+        if (account?.provider === "microsoft-entra-id" && stored.organizationId && account.access_token && account.providerAccountId) {
+          try {
+            await discoverPlannerPlans(
+              stored.organizationId,
+              readEnv("AZURE_AD_TENANT_ID")!,
+              account.providerAccountId,
+              account.access_token,
+            );
+          } catch {
+            // Planner discovery must never prevent a corporate user from signing in.
+          }
+        }
       } else if (trigger === "update" && token.sub) {
         const stored = await db.user.findUnique({ where: { id: token.sub }, select: { role: true, departmentId: true, organizationId: true } });
         token.role = stored?.role; token.departmentId = stored?.departmentId; token.organizationId = stored?.organizationId;
