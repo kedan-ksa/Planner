@@ -1,6 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { readEnv } from "@/lib/env";
+import { mapMicrosoftProfile } from "@/lib/microsoft-identity";
 
 export default {
   trustHost: true,
@@ -13,9 +14,10 @@ export default {
       authorization: {
         params: { scope: readEnv("MICROSOFT_GRAPH_SCOPE") },
       },
+      profile: mapMicrosoftProfile,
     }),
   ],
-  pages: { signIn: "/login" },
+  pages: { signIn: "/login", error: "/login" },
   callbacks: {
     authorized: ({ auth }) => Boolean(auth?.user),
   },
