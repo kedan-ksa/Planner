@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';import {Role} from '@prisma/client';import {can} from '../lib/rbac';
 import { canView } from '../lib/access-control';
-describe('RBAC',()=>{it('restricts technical settings',()=>{expect(can(Role.SUPER_ADMIN,'configure')).toBe(true);expect(can(Role.EXECUTIVE,'configure')).toBe(false)});it('allows department manager submissions',()=>expect(can(Role.DEPARTMENT_MANAGER,'submit')).toBe(true));});
+describe('RBAC',()=>{it('restricts technical settings',()=>{expect(can(Role.SUPER_ADMIN,'configure')).toBe(true);expect(can(Role.EXECUTIVE,'configure')).toBe(false)});it('allows department manager submissions',()=>expect(can(Role.DEPARTMENT_MANAGER,'submit')).toBe(true));it('restricts user management to super administrators',()=>{expect(can(Role.SUPER_ADMIN,'manage')).toBe(true);expect(can(Role.EXECUTIVE,'manage')).toBe(false);expect(can(Role.DEPARTMENT_MANAGER,'manage')).toBe(false);expect(can(Role.DEPARTMENT_MEMBER,'manage')).toBe(false);expect(can(Role.VIEWER,'manage')).toBe(false)});});
 
 describe('navigation access', () => {
   it('lets every signed-in role discover its Microsoft plans while users stay admin-only', () => {
