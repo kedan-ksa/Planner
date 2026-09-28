@@ -4,6 +4,7 @@ import { Prisma, Role } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import { requireAction } from "@/lib/authz";
 import { assertAcyclicParent } from "@/lib/hierarchy";
 import { assertUserAccessChange } from "@/lib/user-access";
@@ -34,7 +35,7 @@ export async function updateUserAccess(formData: FormData) {
     active: parsed.active === "true",
   };
 
-  await db.$transaction(async (tx) => {
+  await withDatabaseRetry(() => db.$transaction(async (tx) => {
     // Serializes access changes for this organization so two requests cannot
     // accidentally demote its last active Super Admin at the same time.
     await tx.$queryRaw(Prisma.sql`
@@ -101,7 +102,7 @@ export async function updateUserAccess(formData: FormData) {
         newValue: next,
       },
     });
-  });
+  }));
 
   revalidatePath("/users");
   revalidatePath("/departments");

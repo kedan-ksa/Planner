@@ -4,6 +4,7 @@ import { ApprovalActorType, ApprovalStatus, ReportStatus, Role } from "@prisma/c
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import { requireAction, requireUser } from "@/lib/authz";
 
 const workflowSchema = z.object({ name: z.string().trim().min(3).max(120), departmentId: z.string().cuid(), entityType: z.literal("REPORT") });
@@ -11,12 +12,12 @@ export async function createApprovalWorkflow(formData: FormData) {
   const user = await requireAction("manage");
   const data = workflowSchema.parse(Object.fromEntries(formData));
   await db.department.findFirstOrThrow({ where: { id: data.departmentId, organizationId: user.organizationId! } });
-  await db.$transaction(async (tx) => {
+  await withDatabaseRetry(() => db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "Department" WHERE "id" = ${data.departmentId} FOR UPDATE`;
     const existing = await tx.approvalWorkflow.findFirst({ where: { organizationId: user.organizationId!, departmentId: data.departmentId, entityType: data.entityType, active: true } });
     if (existing) throw new Error("APPROVAL_WORKFLOW_ALREADY_EXISTS");
     await tx.approvalWorkflow.create({ data: { organizationId: user.organizationId!, ...data } });
-  });
+  }));
   revalidatePath("/approvals");
 }
 
@@ -53,7 +54,7 @@ export async function decideApproval(formData: FormData) {
   if (selected.requestedById === user.id) throw new Error("SELF_APPROVAL_FORBIDDEN");
   // Only reports have an implemented entity workflow at present.
   if (!selected.reportId || selected.entityType !== "REPORT") throw new Error("UNSUPPORTED_APPROVAL_ENTITY");
-  await db.$transaction(async (tx) => {
+  await withDatabaseRetry(() => db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "Report" WHERE "id" = ${selected.reportId} FOR UPDATE`;
     const report = await tx.report.findUniqueOrThrow({ where: { id: selected.reportId! } });
     const department = report.departmentId ? await tx.department.findFirst({ where: { id: report.departmentId, organizationId: user.organizationId! } }) : null;
@@ -79,7 +80,7 @@ export async function decideApproval(formData: FormData) {
       if (next?.approverId) await tx.notification.create({ data: { userId: next.approverId, category: "APPROVALS", title: "تقرير ينتظر اعتمادك", body: report.title, important: true, entityType: "Report", entityId: report.id } });
     }
     await tx.auditLog.create({ data: { userId: user.id, action: "REPORT_APPROVAL_DECIDED", entityType: "Report", entityId: report.id, oldValue: { approvalId: approval.id, status: approval.status }, newValue: { status, comment: data.comment ?? null } } });
-  }, { timeout: 20000 });
+  }, { timeout: 20000 }));
   revalidatePath("/approvals");
   revalidatePath("/reports");
   revalidatePath(`/reports/${selected.reportId}`);

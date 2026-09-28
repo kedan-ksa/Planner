@@ -4,6 +4,7 @@ import { Role, WorkStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import { requireUser } from "@/lib/authz";
 import { canUpdateTask } from "@/lib/task-access";
 import { taskProgressStatus } from "@/lib/task-progress";
@@ -25,7 +26,7 @@ export async function updateTaskProgress(formData: FormData) {
   if (!(await canUpdateTask(user, data.taskId))) throw new Error("FORBIDDEN");
   const status = taskProgressStatus(data.progress, data.status);
   const selected = await db.task.findUniqueOrThrow({ where: { id: data.taskId }, select: { initiativeId: true, initiative: { select: { objectiveId: true } } } });
-  await db.$transaction(async (tx) => {
+  await withDatabaseRetry(() => db.$transaction(async (tx) => {
     // Serialize sibling updates so the initiative aggregate and audit history agree.
     await tx.$queryRaw`SELECT "id" FROM "Initiative" WHERE "id" = ${selected.initiativeId} FOR UPDATE`;
     await tx.$queryRaw`SELECT "id" FROM "Task" WHERE "id" = ${data.taskId} FOR UPDATE`;
@@ -54,7 +55,7 @@ export async function updateTaskProgress(formData: FormData) {
     const aggregate = await tx.task.aggregate({ where: { initiativeId: task.initiativeId }, _avg: { percentComplete: true } });
     await tx.initiative.update({ where: { id: task.initiativeId }, data: { progress: aggregate._avg.percentComplete ?? 0 } });
     await recalculateObjectiveProgress(tx, selected.initiative.objectiveId);
-  }, { timeout: 20000 });
+  }, { timeout: 20000 }));
   revalidatePath("/tasks");
   revalidatePath("/initiatives");
 }

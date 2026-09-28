@@ -11,6 +11,7 @@ Next.js App Router + TypeScript، PostgreSQL/Prisma، Auth.js مع Microsoft Ent
 1. انسخ `.env.example` إلى `.env` وأدخل القيم المحلية.
 2. شغّل `docker compose up -d db`.
 3. شغّل `npm install` ثم `npm run db:migrate` و`npm run db:seed`.
+4. للتحقق التشغيلي من PostgreSQL شغّل `npm run db:check`. لا يعرض هذا الأمر بيانات الاتصال السرية.
 4. شغّل `npm run dev` وافتح `http://localhost:3000`.
 
 حسابات العرض لا تُنشأ إلا عبر seed في بيئة غير Production. أوامر الجودة: `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`.
