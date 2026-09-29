@@ -4,7 +4,15 @@ import { beginPlannerSync } from "../services/planner/sync";
 
 const runDatabaseTests = process.env.RUN_DATABASE_TESTS === "true";
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const ids: { organization?: string; connection?: string; mapping?: string } = {};
+const ids: {
+  organization?: string;
+  department?: string;
+  axis?: string;
+  objective?: string;
+  initiative?: string;
+  connection?: string;
+  mapping?: string;
+} = {};
 
 describe.skipIf(!runDatabaseTests)("database concurrency", () => {
   beforeAll(async () => {
@@ -16,6 +24,7 @@ describe.skipIf(!runDatabaseTests)("database concurrency", () => {
     const department = await db.department.create({
       data: { organizationId: organization.id, name: "Concurrency", code: "CONCURRENCY" },
     });
+    ids.department = department.id;
     const axis = await db.strategicAxis.create({
       data: {
         organizationId: organization.id,
@@ -25,6 +34,7 @@ describe.skipIf(!runDatabaseTests)("database concurrency", () => {
         endDate: new Date("2026-12-31T00:00:00.000Z"),
       },
     });
+    ids.axis = axis.id;
     const objective = await db.strategicObjective.create({
       data: {
         axisId: axis.id,
@@ -35,6 +45,7 @@ describe.skipIf(!runDatabaseTests)("database concurrency", () => {
         endDate: new Date("2026-12-31T00:00:00.000Z"),
       },
     });
+    ids.objective = objective.id;
     const initiative = await db.initiative.create({
       data: {
         axisId: axis.id,
@@ -46,6 +57,7 @@ describe.skipIf(!runDatabaseTests)("database concurrency", () => {
         weight: 1,
       },
     });
+    ids.initiative = initiative.id;
     const connection = await db.plannerConnection.create({
       data: {
         organizationId: organization.id,
@@ -74,6 +86,10 @@ describe.skipIf(!runDatabaseTests)("database concurrency", () => {
       await db.plannerPlanMapping.deleteMany({ where: { connectionId: ids.connection } });
       await db.plannerConnection.deleteMany({ where: { id: ids.connection } });
     }
+    if (ids.initiative) await db.initiative.deleteMany({ where: { id: ids.initiative } });
+    if (ids.objective) await db.strategicObjective.deleteMany({ where: { id: ids.objective } });
+    if (ids.axis) await db.strategicAxis.deleteMany({ where: { id: ids.axis } });
+    if (ids.department) await db.department.deleteMany({ where: { id: ids.department } });
     if (ids.organization) await db.organization.deleteMany({ where: { id: ids.organization } });
   });
 
