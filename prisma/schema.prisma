@@ -142,6 +142,9 @@ model Department {
   risks             Risk[]
 
   @@unique([organizationId, code])
+  @@index([organizationId, status, sortOrder])
+  @@index([parentId])
+  @@index([managerId])
 }
 
 model User {
@@ -164,15 +167,19 @@ model User {
   assignedTasks      Task[]                 @relation("TaskAssignee")
   taskUpdates        TaskUpdate[]           @relation("TaskUpdateAuthor")
   approvalSteps      ApprovalWorkflowStep[] @relation("ApprovalStepUser")
-  ownedAxes          StrategicAxis[]         @relation("AxisOwner")
-  ownedObjectives    StrategicObjective[]    @relation("ObjectiveOwner")
-  ownedInitiatives   Initiative[]            @relation("InitiativeOwner")
-  ownedKpis          KPI[]                   @relation("KpiOwner")
-  ownedRisks         Risk[]                  @relation("RiskOwner")
+  ownedAxes          StrategicAxis[]        @relation("AxisOwner")
+  ownedObjectives    StrategicObjective[]   @relation("ObjectiveOwner")
+  ownedInitiatives   Initiative[]           @relation("InitiativeOwner")
+  ownedKpis          KPI[]                  @relation("KpiOwner")
+  ownedRisks         Risk[]                 @relation("RiskOwner")
   accounts           Account[]
   sessions           Session[]
   notifications      Notification[]
   auditLogs          AuditLog[]
+
+  @@index([organizationId, active, role])
+  @@index([departmentId, active])
+  @@index([managerId])
 }
 
 model Account {
@@ -191,6 +198,7 @@ model Account {
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId, provider])
 }
 
 model Session {
@@ -226,6 +234,7 @@ model StrategicAxis {
   kpis           KPI[]
 
   @@index([ownerId])
+  @@index([organizationId, status])
 }
 
 model StrategicObjective {
@@ -242,11 +251,13 @@ model StrategicObjective {
   status       WorkStatus    @default(NOT_STARTED)
   axis         StrategicAxis @relation(fields: [axisId], references: [id], onDelete: Cascade)
   department   Department?   @relation(fields: [departmentId], references: [id])
-  ownerUser    User?          @relation("ObjectiveOwner", fields: [ownerUserId], references: [id])
+  ownerUser    User?         @relation("ObjectiveOwner", fields: [ownerUserId], references: [id])
   initiatives  Initiative[]
   kpis         KPI[]
 
   @@index([ownerUserId])
+  @@index([axisId, status])
+  @@index([departmentId, status])
 }
 
 model Initiative {
@@ -274,6 +285,9 @@ model Initiative {
   risks        Risk[]
 
   @@index([ownerId])
+  @@index([axisId, status])
+  @@index([objectiveId, status])
+  @@index([departmentId, status, dueDate])
 }
 
 model Task {
@@ -290,6 +304,9 @@ model Task {
   assignee        User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
   updates         TaskUpdate[]
   updatedAt       DateTime     @default(now()) @updatedAt
+
+  @@index([initiativeId, status])
+  @@index([assigneeId, status, dueDate])
 }
 
 model TaskUpdate {
@@ -337,6 +354,10 @@ model KPI {
   values       KPIValueHistory[]
 
   @@index([ownerId])
+  @@index([axisId])
+  @@index([objectiveId])
+  @@index([initiativeId])
+  @@index([departmentId, frequency])
 }
 
 model KPIValueHistory {
@@ -347,6 +368,9 @@ model KPIValueHistory {
   achievement Decimal  @db.Decimal(7, 2)
   recordedAt  DateTime @default(now())
   kpi         KPI      @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+
+  @@index([kpiId, recordedAt])
+  @@index([periodId])
 }
 
 model ReportingPeriod {
@@ -359,6 +383,8 @@ model ReportingPeriod {
   dueDate   DateTime
   reports   Report[]
   updates   ProgressUpdate[]
+
+  @@index([year, type, startDate])
 }
 
 model ProgressUpdate {
@@ -402,6 +428,9 @@ model Report {
   updatedAt       DateTime        @updatedAt
   period          ReportingPeriod @relation(fields: [periodId], references: [id])
   approvals       Approval[]
+
+  @@index([periodId, departmentId, status])
+  @@index([departmentId, updatedAt])
 }
 
 model Approval {
@@ -417,6 +446,9 @@ model Approval {
   decidedAt     DateTime?
   stepOrder     Int            @default(1)
   report        Report?        @relation(fields: [reportId], references: [id])
+
+  @@index([reportId, status, stepOrder])
+  @@index([approverId, status, createdAt])
 }
 
 model ApprovalWorkflow {
@@ -523,8 +555,10 @@ model PlannerPlanMapping {
   connection     PlannerConnection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   initiative     Initiative?          @relation(fields: [initiativeId], references: [id])
   tasks          PlannerTaskMapping[]
+  jobs           SyncJob[]
 
   @@unique([connectionId, externalPlanId])
+  @@index([initiativeId])
 }
 
 model PlannerTaskMapping {
@@ -537,6 +571,7 @@ model PlannerTaskMapping {
   planMapping    PlannerPlanMapping @relation(fields: [planMappingId], references: [id], onDelete: Cascade)
 
   @@unique([planMappingId, externalTaskId])
+  @@index([taskId])
 }
 
 model ExternalEntity {
@@ -551,13 +586,18 @@ model ExternalEntity {
 }
 
 model SyncJob {
-  id           String            @id @default(cuid())
-  connectionId String
-  status       SyncStatus        @default(PENDING)
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  connection   PlannerConnection @relation(fields: [connectionId], references: [id])
-  logs         SyncLog[]
+  id            String              @id @default(cuid())
+  connectionId  String
+  planMappingId String?
+  status        SyncStatus          @default(PENDING)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  connection    PlannerConnection   @relation(fields: [connectionId], references: [id])
+  planMapping   PlannerPlanMapping? @relation(fields: [planMappingId], references: [id], onDelete: SetNull)
+  logs          SyncLog[]
+
+  @@index([connectionId, status, startedAt])
+  @@index([planMappingId, status, startedAt])
 }
 
 model SyncLog {
@@ -567,6 +607,8 @@ model SyncLog {
   message   String
   createdAt DateTime @default(now())
   job       SyncJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
 }
 
 model AuditLog {
@@ -580,4 +622,7 @@ model AuditLog {
   ipAddress  String?
   createdAt  DateTime @default(now())
   user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId, createdAt])
+  @@index([userId, createdAt])
 }

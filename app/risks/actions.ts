@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAction } from "@/lib/authz";
 import { db } from "@/lib/db";
+import { withDatabaseRetry } from "@/lib/database-retry";
 import { visibleDepartmentIds } from "@/lib/department-scope";
 import { canManageRisk } from "@/lib/risk-access";
 
@@ -70,7 +71,7 @@ export async function saveRisk(formData: FormData) {
     status: data.status,
   };
 
-  await db.$transaction(async (tx) => {
+  await withDatabaseRetry(() => db.$transaction(async (tx) => {
     let entityId: string;
     if (current) {
       await tx.$queryRaw`SELECT "id" FROM "Risk" WHERE "id" = ${current.id} FOR UPDATE`;
@@ -85,7 +86,7 @@ export async function saveRisk(formData: FormData) {
     if (ownerId && ownerId !== user.id && (!current || current.ownerId !== ownerId)) {
       await tx.notification.create({ data: { userId: ownerId, category: "RISKS", title: "تم إسناد خطر إليك", body: data.title, important: values.riskScore >= 10, entityType: "Risk", entityId } });
     }
-  }, { timeout: 20000 });
+  }, { timeout: 20000 }));
 
   revalidatePath("/risks");
   revalidatePath("/notifications");

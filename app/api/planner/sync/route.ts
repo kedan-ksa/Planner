@@ -31,7 +31,9 @@ export async function POST(request: Request) {
     await syncPlan(mapping.id, new PlannerService(new MicrosoftGraphClient(token)));
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN_SYNC_ERROR";
-    outcome = /RECONNECT|TOKEN|ACCOUNT_NOT_CONNECTED/i.test(message) ? "reconnect" : "failed";
+    outcome = message.includes("PLANNER_SYNC_ALREADY_RUNNING")
+      ? "busy"
+      : /RECONNECT|TOKEN|ACCOUNT_NOT_CONNECTED/i.test(message) ? "reconnect" : "failed";
   }
 
   return NextResponse.redirect(new URL(`/settings/integrations?sync=${outcome}`, request.url), 303);
