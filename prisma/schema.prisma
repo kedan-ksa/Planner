@@ -376,7 +376,7 @@ model KPI {
   values            KPIValueHistory[]
   targets           KPITarget[]
 
-  @@unique([objectiveId, code])
+  @@index([objectiveId, code])
   @@index([ownerId])
   @@index([axisId])
   @@index([objectiveId])
