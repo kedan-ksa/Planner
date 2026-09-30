@@ -19,6 +19,7 @@ if (!connectionString) throw new Error("DATABASE_URL is required");
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 const sourcePath = process.argv[2] ?? "data/plan-2026-source.json";
+const objectivePrefixes = ["F1", "C1", "C2", "P1", "D1"];
 
 async function main() {
   const source = JSON.parse(await readFile(sourcePath, "utf8")) as PlanSourceData;
@@ -93,11 +94,16 @@ async function main() {
           },
         });
         const target = row.overallTarget ?? row.target2026 ?? 0;
+        const objectiveKpiNames = [...new Set(objectiveRows.map((item) => item.kpi))];
+        const allObjectiveNames = [...new Set(rows.map((item) => item.objective))];
+        const prefix = objectivePrefixes[allObjectiveNames.indexOf(objectiveName)];
+        const code = prefix ? `${prefix}-${objectiveKpiNames.indexOf(row.kpi) + 1}` : null;
         let kpi = await db.kPI.findFirst({
           where: { objectiveId: objective.id, name: row.kpi },
         });
         const kpiType = inferKpiType(row.kpi) as KpiType;
         const data = {
+          code,
           name: row.kpi,
           axisId: axis.id,
           objectiveId: objective.id,
@@ -115,6 +121,15 @@ async function main() {
         kpi = kpi
           ? await db.kPI.update({ where: { id: kpi.id }, data })
           : await db.kPI.create({ data });
+
+        for (const [year, targetValue] of [[2026, row.target2026], [2027, row.target2027]] as const) {
+          if (targetValue === null) continue;
+          await db.kPITarget.upsert({
+            where: { kpiId_departmentId_year: { kpiId: kpi.id, departmentId: ownerDepartment.id, year } },
+            update: { targetValue, note: row.note },
+            create: { kpiId: kpi.id, departmentId: ownerDepartment.id, year, targetValue, note: row.note },
+          });
+        }
 
         await db.externalEntity.upsert({
           where: {
