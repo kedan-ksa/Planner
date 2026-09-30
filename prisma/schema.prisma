@@ -139,6 +139,7 @@ model Department {
   objectives        StrategicObjective[]
   initiatives       Initiative[]
   kpis              KPI[]
+  kpiTargets        KPITarget[]
   risks             Risk[]
 
   @@unique([organizationId, code])
@@ -165,6 +166,7 @@ model User {
   directReports      User[]                 @relation("UserManager")
   managedDepartments Department[]           @relation("DepartmentManager")
   assignedTasks      Task[]                 @relation("TaskAssignee")
+  taskAssignments    TaskAssignment[]
   taskUpdates        TaskUpdate[]           @relation("TaskUpdateAuthor")
   approvalSteps      ApprovalWorkflowStep[] @relation("ApprovalStepUser")
   ownedAxes          StrategicAxis[]        @relation("AxisOwner")
@@ -291,22 +293,38 @@ model Initiative {
 }
 
 model Task {
-  id              String       @id @default(cuid())
+  id              String           @id @default(cuid())
   initiativeId    String
   title           String
   description     String?
   assigneeId      String?
   dueDate         DateTime?
-  percentComplete Int          @default(0)
-  status          WorkStatus   @default(NOT_STARTED)
-  externalId      String?      @unique
-  initiative      Initiative   @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
-  assignee        User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  percentComplete Int              @default(0)
+  status          WorkStatus       @default(NOT_STARTED)
+  externalId      String?          @unique
+  initiative      Initiative       @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  assignee        User?            @relation("TaskAssignee", fields: [assigneeId], references: [id])
   updates         TaskUpdate[]
-  updatedAt       DateTime     @default(now()) @updatedAt
+  assignments     TaskAssignment[]
+  updatedAt       DateTime         @default(now()) @updatedAt
 
   @@index([initiativeId, status])
   @@index([assigneeId, status, dueDate])
+}
+
+model TaskAssignment {
+  id             String   @id @default(cuid())
+  taskId         String
+  userId         String?
+  externalUserId String
+  source         String   @default("MICROSOFT_PLANNER")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([taskId, externalUserId])
+  @@index([userId, taskId])
 }
 
 model TaskUpdate {
@@ -330,29 +348,35 @@ model TaskUpdate {
 }
 
 model KPI {
-  id           String              @id @default(cuid())
-  name         String
-  axisId       String?
-  objectiveId  String?
-  initiativeId String?
-  departmentId String
-  ownerId      String?
-  type         KpiType
-  direction    KpiDirection
-  baseline     Decimal?            @db.Decimal(18, 4)
-  target       Decimal             @db.Decimal(18, 4)
-  currentValue Decimal?            @db.Decimal(18, 4)
-  unit         String?
-  weight       Decimal             @default(1) @db.Decimal(5, 2)
-  frequency    Frequency
-  dataSource   String?
-  axis         StrategicAxis?      @relation(fields: [axisId], references: [id])
-  objective    StrategicObjective? @relation(fields: [objectiveId], references: [id])
-  initiative   Initiative?         @relation(fields: [initiativeId], references: [id])
-  department   Department          @relation(fields: [departmentId], references: [id])
-  owner        User?               @relation("KpiOwner", fields: [ownerId], references: [id])
-  values       KPIValueHistory[]
+  id                String              @id @default(cuid())
+  code              String?
+  name              String
+  description       String?
+  axisId            String?
+  objectiveId       String?
+  initiativeId      String?
+  departmentId      String
+  ownerId           String?
+  type              KpiType
+  direction         KpiDirection
+  baseline          Decimal?            @db.Decimal(18, 4)
+  target            Decimal             @db.Decimal(18, 4)
+  currentValue      Decimal?            @db.Decimal(18, 4)
+  unit              String?
+  weight            Decimal             @default(1) @db.Decimal(5, 2)
+  frequency         Frequency
+  dataSource        String?
+  calculationMethod String?
+  cumulative        Boolean             @default(false)
+  axis              StrategicAxis?      @relation(fields: [axisId], references: [id])
+  objective         StrategicObjective? @relation(fields: [objectiveId], references: [id])
+  initiative        Initiative?         @relation(fields: [initiativeId], references: [id])
+  department        Department          @relation(fields: [departmentId], references: [id])
+  owner             User?               @relation("KpiOwner", fields: [ownerId], references: [id])
+  values            KPIValueHistory[]
+  targets           KPITarget[]
 
+  @@unique([objectiveId, code])
   @@index([ownerId])
   @@index([axisId])
   @@index([objectiveId])
@@ -360,17 +384,39 @@ model KPI {
   @@index([departmentId, frequency])
 }
 
+model KPITarget {
+  id           String            @id @default(cuid())
+  kpiId        String
+  departmentId String?
+  year         Int
+  targetValue  Decimal           @db.Decimal(18, 4)
+  baseline     Decimal?          @db.Decimal(18, 4)
+  note         String?
+  kpi          KPI               @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  department   Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  values       KPIValueHistory[]
+
+  @@unique([kpiId, departmentId, year])
+  @@index([departmentId, year])
+}
+
 model KPIValueHistory {
-  id          String   @id @default(cuid())
-  kpiId       String
-  periodId    String?
-  value       Decimal  @db.Decimal(18, 4)
-  achievement Decimal  @db.Decimal(7, 2)
-  recordedAt  DateTime @default(now())
-  kpi         KPI      @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  id           String     @id @default(cuid())
+  kpiId        String
+  periodId     String?
+  targetId     String?
+  value        Decimal    @db.Decimal(18, 4)
+  achievement  Decimal    @db.Decimal(7, 2)
+  evidenceName String?
+  evidenceUrl  String?
+  notes        String?
+  recordedAt   DateTime   @default(now())
+  kpi          KPI        @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  target       KPITarget? @relation(fields: [targetId], references: [id], onDelete: SetNull)
 
   @@index([kpiId, recordedAt])
   @@index([periodId])
+  @@index([targetId, recordedAt])
 }
 
 model ReportingPeriod {

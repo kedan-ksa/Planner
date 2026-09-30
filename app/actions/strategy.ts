@@ -123,7 +123,7 @@ export async function saveInitiative(formData: FormData) {
   revalidatePath("/initiatives"); revalidatePath("/objectives"); revalidatePath("/");
 }
 
-const kpiSchema = z.object({ kpiId: optionalId.default(""), name: z.string().trim().min(3).max(240), axisId: optionalId, objectiveId: optionalId, initiativeId: optionalId, departmentId: id, ownerId: optionalId, type: z.nativeEnum(KpiType), direction: z.nativeEnum(KpiDirection), baseline: optionalDecimal, target: decimal, unit: z.string().trim().max(40).optional(), weight, frequency: z.nativeEnum(Frequency), dataSource: z.string().trim().max(500).optional() });
+const kpiSchema = z.object({ kpiId: optionalId.default(""), code: z.string().trim().max(40).optional(), name: z.string().trim().min(3).max(240), description: z.string().trim().max(4000).optional(), axisId: optionalId, objectiveId: optionalId, initiativeId: optionalId, departmentId: id, ownerId: optionalId, type: z.nativeEnum(KpiType), direction: z.nativeEnum(KpiDirection), baseline: optionalDecimal, target: decimal, target2026: optionalDecimal, target2027: optionalDecimal, unit: z.string().trim().max(40).optional(), weight, frequency: z.nativeEnum(Frequency), dataSource: z.string().trim().max(500).optional(), calculationMethod: z.string().trim().max(2000).optional(), cumulative: z.coerce.boolean().default(false) });
 export async function saveKpi(formData: FormData) {
   const user = await strategicEditor();
   const data = kpiSchema.parse(Object.fromEntries(formData));
@@ -139,16 +139,18 @@ export async function saveKpi(formData: FormData) {
     const objective = await db.strategicObjective.findFirstOrThrow({ where: { id: objectiveId, axis: { organizationId: user.organizationId! } } });
     axisId = objective.axisId;
   } else if (axisId) await db.strategicAxis.findFirstOrThrow({ where: { id: axisId, organizationId: user.organizationId! } });
-  const values = { name: data.name, axisId, objectiveId, initiativeId, departmentId: data.departmentId, ownerId: data.ownerId || null, type: data.type, direction: data.direction, baseline: data.baseline ?? null, target: data.target, unit: data.unit || null, weight: data.weight, frequency: data.frequency, dataSource: data.dataSource || null };
+  const values = { code: data.code || null, name: data.name, description: data.description || null, axisId, objectiveId, initiativeId, departmentId: data.departmentId, ownerId: data.ownerId || null, type: data.type, direction: data.direction, baseline: data.baseline ?? null, target: data.target, unit: data.unit || null, weight: data.weight, frequency: data.frequency, dataSource: data.dataSource || null, calculationMethod: data.calculationMethod || null, cumulative: data.cumulative };
   const current = data.kpiId ? await db.kPI.findUniqueOrThrow({ where: { id: data.kpiId } }) : null;
   if (current) await assertDepartmentScope(user, current.departmentId);
   await withDatabaseRetry(() => db.$transaction(async (tx) => {
     if (current) {
       await tx.$queryRaw`SELECT "id" FROM "KPI" WHERE "id" = ${current.id} FOR UPDATE`;
       await tx.kPI.update({ where: { id: current.id }, data: values });
+      for (const [year, targetValue] of [[2026, data.target2026], [2027, data.target2027]] as const) if (targetValue !== undefined) await tx.kPITarget.upsert({ where: { kpiId_departmentId_year: { kpiId: current.id, departmentId: data.departmentId, year } }, update: { targetValue }, create: { kpiId: current.id, departmentId: data.departmentId, year, targetValue } });
       await audit(tx, user.id, "KPI_UPDATED", "KPI", current.id, current, values);
     } else {
       const created = await tx.kPI.create({ data: values });
+      for (const [year, targetValue] of [[2026, data.target2026], [2027, data.target2027]] as const) if (targetValue !== undefined) await tx.kPITarget.create({ data: { kpiId: created.id, departmentId: data.departmentId, year, targetValue } });
       await audit(tx, user.id, "KPI_CREATED", "KPI", created.id, null, values);
     }
     await refreshProgress(
@@ -160,7 +162,7 @@ export async function saveKpi(formData: FormData) {
   revalidatePath("/kpis");
 }
 
-const valueSchema = z.object({ kpiId: id, value: decimal, periodId: optionalId.default("") });
+const valueSchema = z.object({ kpiId: id, targetId: optionalId.default(""), value: decimal, periodId: optionalId.default(""), evidenceName: z.string().trim().max(240).optional(), evidenceUrl: z.string().trim().url().max(2000).or(z.literal("")).default(""), notes: z.string().trim().max(2000).optional() });
 export async function recordKpiValue(formData: FormData) {
   const user = await requireAction("update");
   const data = valueSchema.parse(Object.fromEntries(formData));
@@ -171,13 +173,14 @@ export async function recordKpiValue(formData: FormData) {
   const department = await db.department.findFirst({ where: { id: kpi.departmentId, organizationId: user.organizationId! }, select: { id: true } });
   if (!department) throw new Error("FORBIDDEN");
   if (data.periodId) await db.reportingPeriod.findUniqueOrThrow({ where: { id: data.periodId } });
-  const achievement = kpiAchievement(data.value, Number(kpi.target), Number(kpi.baseline ?? 0), kpi.direction);
+  const target = data.targetId ? await db.kPITarget.findFirstOrThrow({ where: { id: data.targetId, kpiId: kpi.id } }) : null;
+  const achievement = kpiAchievement(data.value, Number(target?.targetValue ?? kpi.target), Number(target?.baseline ?? kpi.baseline ?? 0), kpi.direction);
   await withDatabaseRetry(() => db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "KPI" WHERE "id" = ${kpi.id} FOR UPDATE`;
     const current = await tx.kPI.findUniqueOrThrow({ where: { id: kpi.id } });
     await tx.kPI.update({ where: { id: kpi.id }, data: { currentValue: data.value } });
-    await tx.kPIValueHistory.create({ data: { kpiId: kpi.id, periodId: data.periodId || null, value: data.value, achievement } });
-    await tx.auditLog.create({ data: { userId: user.id, action: "KPI_VALUE_RECORDED", entityType: "KPI", entityId: kpi.id, oldValue: { currentValue: current.currentValue }, newValue: { currentValue: data.value, achievement, periodId: data.periodId || null } } });
+    await tx.kPIValueHistory.create({ data: { kpiId: kpi.id, targetId: target?.id ?? null, periodId: data.periodId || null, value: data.value, achievement, evidenceName: data.evidenceName || null, evidenceUrl: data.evidenceUrl || null, notes: data.notes || null } });
+    await tx.auditLog.create({ data: { userId: user.id, action: "KPI_VALUE_RECORDED", entityType: "KPI", entityId: kpi.id, oldValue: { currentValue: current.currentValue }, newValue: { currentValue: data.value, achievement, targetId: target?.id ?? null, periodId: data.periodId || null, evidenceUrl: data.evidenceUrl || null } } });
     if (kpi.objectiveId) await recalculateObjectiveProgress(tx, kpi.objectiveId);
     else if (kpi.axisId) await recalculateAxisProgress(tx, kpi.axisId);
   }, { timeout: 30000 }));

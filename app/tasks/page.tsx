@@ -35,11 +35,12 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     const payload = entry.payload as { assignments?: Record<string, unknown> } | null;
     return account && payload?.assignments && Object.hasOwn(payload.assignments, account.providerAccountId);
   }).map((entry) => entry.externalId);
-  const taskWhere = { initiativeId: { in: initiatives.map((item) => item.id) }, ...(personalOnly ? { OR: [{ assigneeId: user.id }, { externalId: { in: assignedIds } }] } : {}) };
+  const taskWhere = { initiativeId: { in: initiatives.map((item) => item.id) }, ...(personalOnly ? { OR: [{ assigneeId: user.id }, { assignments: { some: { userId: user.id } } }, { externalId: { in: assignedIds } }] } : {}) };
   const total = await db.task.count({ where: taskWhere });
   const page = Math.min(validPage, Math.max(1, Math.ceil(total / 50)));
   const tasks = await db.task.findMany({
     where: taskWhere,
+    include: { assignments: true },
     orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
     skip: (page - 1) * 50,
     take: 50,
@@ -64,7 +65,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   const visibleTasks = tasks.filter((task) => {
     if (user.role !== Role.DEPARTMENT_MEMBER && user.role !== Role.VIEWER) return true;
-    if (task.assigneeId === user.id) return true;
+    if (task.assigneeId === user.id || task.assignments.some((assignment) => assignment.userId === user.id)) return true;
     const payload = task.externalId ? payloadByExternalId.get(task.externalId) : undefined;
     const raw = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as Record<string, unknown> : {};
     const assignments = raw.assignments && typeof raw.assignments === "object" && !Array.isArray(raw.assignments) ? Object.keys(raw.assignments as Record<string, unknown>) : [];

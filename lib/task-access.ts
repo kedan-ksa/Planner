@@ -15,12 +15,13 @@ export async function canUpdateTask(user: ScopedUser, taskId: string) {
 
   const task = await db.task.findUnique({
     where: { id: taskId },
-    select: { assigneeId: true, externalId: true, initiative: { select: { departmentId: true, department: { select: { organizationId: true } } } } },
+    select: { assigneeId: true, externalId: true, assignments: { where: { userId: user.id }, select: { id: true }, take: 1 }, initiative: { select: { departmentId: true, department: { select: { organizationId: true } } } } },
   });
   if (!task) return false;
   if (task.initiative.department.organizationId !== user.organizationId) return false;
   if (user.role === Role.SUPER_ADMIN) return true;
   if (task.assigneeId === user.id) return true;
+  if (task.assignments.length > 0) return true;
 
   if (user.role === Role.DEPARTMENT_MANAGER) {
     const visible = await visibleDepartmentIds(user.role, user.organizationId, user.departmentId);

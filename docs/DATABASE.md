@@ -2,6 +2,8 @@
 
 يحتوي `prisma/schema.prisma` على النماذج والعلاقات والفهارس. استخدم `npm run db:migrate` للتطوير و`npm run db:deploy` في الإنتاج. تحفظ قيم KPI تاريخيًا، وتحفظ كيانات Planner الخام منفصلة لضمان idempotency.
 
+نموذج الخطة المعتمد هو: `StrategicAxis → StrategicObjective → KPI → KPITarget → KPIValueHistory`. يفصل `KPITarget` المستهدف السنوي والإدارة المسؤولة عن تعريف المؤشر، بينما يحفظ `KPIValueHistory` القيمة ونسبة التحقيق ورابط الدليل. ترتبط المبادرات بالهدف، ويمكن إبقاء الربط المباشر الاختياري بالمؤشر للتوافق. تحفظ `TaskAssignment` جميع المكلّفين بالمهمة في Planner بدل اختزالها إلى موظف واحد.
+
 حقول الملكية اختيارية للبيانات القديمة، ويمكن تعيينها من الواجهة: `StrategicAxis.ownerId` و`StrategicObjective.ownerUserId` و`Initiative.ownerId` و`KPI.ownerId`. يجب أن ينتمي المالك إلى المؤسسة، وأن ينتمي مالك الهدف أو المبادرة أو المؤشر إلى الإدارة المالكة عند تحديدها. يحتفظ `KPIValueHistory` بكل قيمة وتاريخ ونسبة تحقيق بدل استبدال التاريخ السابق.
 
 النشر الحالي يطبق التغييرات الإضافية عبر `prisma db push` في GitHub Actions قبل نشر Worker. لا تستخدم `db push` لإزالة أعمدة أو علاقات من الإنتاج دون خطة ترحيل ونسخة احتياطية.
